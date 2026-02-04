@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment variables
+.env
+.env.local
+
+# WhatsApp session data (Baileys) - NUNCA SUBIR
+auth_info/
+auth_info_baileys/
+bot_sessions/
+baileys_store/
+baileys_auth/
+**/creds.json
+**/app-state-sync-*.json
+**/pre-key-*.json
+**/sender-key-*.json
+**/session-*.json
+*.json.bak
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Scraper data
+scraper/
+
+# RAG generated data (keep only source files)
+src/services/knowledgebase/rag/data/**/chunks*.json
+src/services/knowledgebase/rag/data/**/*_embeddings.json
+src/services/knowledgebase/rag/data/**/cleaned_*.csv
+src/services/knowledgebase/rag/data/**/*_report.json
+src/services/knowledgebase/rag/data/**/*_analysis.json
+tiktok_rag/chunks*.json
+tiktok_rag/*_embeddings.json
+tiktok_rag/cleaned_*.csv
+tiktok_rag/*_report.json
+tiktok_rag/*_analysis.json
+
+# Tests
+tests/

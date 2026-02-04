@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sandbox - WhatsApp Bot</title>
+  <link rel="stylesheet" href="/sandbox/styles.css">
+</head>
+<body>
+  <div class="header">
+    <div class="avatar">🤖</div>
+    <div class="info">
+      <h2>Bot Compromiso Legal</h2>
+      <p>Sandbox de pruebas</p>
+    </div>
+    <div class="header-controls">
+      <div class="client-toggle">
+        <span class="toggle-label">Simular:</span>
+        <button id="toggleClient" type="button" class="toggle-btn potential">
+          <span class="toggle-text">Contacto Nuevo</span>
+        </button>
+      </div>
+      <div class="client-toggle">
+        <span class="toggle-label">🔍 Mostrar fuentes:</span>
+        <button id="toggleDebug" type="button" class="toggle-btn debug-off" title="Activar para mostrar fuentes en las respuestas">
+          <span class="debug-text">OFF</span>
+        </button>
+      </div>
+      <span id="status" class="status-badge connected">Conectado</span>
+    </div>
+  </div>
+  
+  <div class="info-banner">
+    🧪 Modo Sandbox: Los mensajes se procesan localmente simulando el flujo real del bot.
+    <a href="/">Volver al QR</a> | 
+    <button id="clearChat" class="clear-btn">Limpiar chat</button>
+    <span id="debugIndicator" style="display: none; margin-left: 15px; background: rgba(255,152,0,0.2); padding: 4px 10px; border-radius: 4px; color: #ff9800;">
+      🔍 Modo Debug Activo - Las respuestas mostrarán fuentes
+    </span>
+  </div>
+  
+  <div class="chat-container" id="chat">
+    <div class="messages" id="messages"></div>
+    <div class="typing" id="typing">
+      <span></span><span></span><span></span>
+    </div>
+  </div>
+  
+  <div class="input-container">
+    <input type="text" id="input" placeholder="Escribe un mensaje..." autocomplete="off">
+    <button id="send" type="button">
+      <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+    </button>
+  </div>
+  
+  <script src="/sandbox/sandbox.js"></script>
+</body>
+</html>
