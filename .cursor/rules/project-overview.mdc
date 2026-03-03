@@ -1,0 +1,62 @@
+---
+description: Información del proyecto WhatsApp Bot - Compromiso Legal para contexto de la IA
+alwaysApply: true
+---
+
+# Bot WhatsApp - Compromiso Legal
+
+## Qué es el proyecto
+
+Bot de WhatsApp para el despacho **Compromiso Legal**. Atiende clientes potenciales con IA (RAG + LLM), clasifica clientes existentes vs potenciales, detecta escalado a humano y ofrece respuestas humanizadas. Incluye modo sandbox para desarrollo con UI de chat y simulación.
+
+## Stack técnico
+
+- **Runtime:** Node.js, TypeScript, ESM (`"type": "module"`).
+- **WhatsApp:** Baileys.
+- **HTTP:** Fastify (servidor, health, APIs).
+- **IA:** Groq (principal, gratis) y OpenAI (fallback); prompts en `src/services/knowledgebase/llm/prompts/`.
+- **RAG:** Pinecone (vectores), chunks de transcripciones TikTok; embeddings con OpenAI.
+- **Logs:** Pino (`src/utils/logger.ts`).
+
+## Estructura principal
+
+```
+src/
+├── index.ts              # Entrada: config, memoria, servidor, WhatsApp
+├── config/env.ts         # Variables de entorno (BOT_MODE, API keys, RAG, URLs)
+├── whatsapp/             # Conexión Baileys, handlers, mensajes
+├── server/               # Fastify, WebSocket, sandbox (solo si BOT_MODE=sandbox)
+├── services/
+│   ├── conversation/     # memory, classifier, escalate, humanizer
+│   └── knowledgebase/    # llm (orquestador, providers, prompts), rag, services-catalog
+└── utils/logger.ts
+```
+
+## Convenciones de código
+
+- **Imports:** Siempre con extensión `.js` en imports ESM (ej: `from './config/env.js'`).
+- **Config:** Usar `config` de `src/config/env.js`; no leer `process.env` directamente en lógica de negocio.
+- **Logging:** Usar `logger` de `src/utils/logger.js` (info, error, bot, etc.).
+- **Documentación:** Los módulos tienen `.md` en su carpeta (conversation.md, knowledgebase.md, server.md) con APIs y flujos.
+
+## Modos de operación
+
+- **sandbox:** UI en `/` y `/sandbox`, solo procesa mensajes de `TEST_PHONE_NUMBER`, APIs de simulación.
+- **production:** Solo `/health` y `/api/status`; procesa todos los números.
+
+## Flujo de un mensaje
+
+1. WhatsApp recibe mensaje → `whatsapp/handlers.ts` → `processMessage(from, body, sendMessage?)`.
+2. Clasificación: `isExistingClient(phone)` → cliente existente (redirige a Telegram) o potencial.
+3. Cliente potencial: `shouldEscalate()` → si escalado, `notifyHuman()`; si no, `getAIResponse(message, phone)` (RAG + catálogo + LLM).
+4. Respuesta humanizada: `sendHumanizedMessage` / `sendHumanizedMessageSandbox` (typing, mensajes naturales).
+
+## Variables de entorno relevantes
+
+Definidas en `.env` y `src/config/env.ts`: `BOT_MODE`, `TEST_PHONE_NUMBER`, `GROQ_API_KEY`, `OPENAI_API_KEY`, `PINECONE_*`, `RAG_*`, `BOOKING_URL`, `TELEGRAM_LINK`, `PORT`.
+
+## Scripts
+
+- `npm run dev` — desarrollo con tsx watch.
+- `npm run build` / `npm start` — compilación y ejecución en producción.
+- Scripts RAG en `src/services/knowledgebase/rag/scripts/` (embeddings, Pinecone, health check, etc.).
