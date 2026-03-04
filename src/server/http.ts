@@ -1,6 +1,7 @@
 import Fastify from 'fastify'
 import { rmSync } from 'fs'
 import { join } from 'path'
+import * as QRCode from 'qrcode'
 import { config } from '../config/env.js'
 import { logger } from '../utils/logger.js'
 
@@ -45,6 +46,62 @@ export async function startServer() {
     mode: config.BOT_MODE
   }))
   
+  // QR para vincular WhatsApp (funciona en cualquier modo)
+  fastify.get('/qr', async (_request, reply) => {
+    if (connectionStatus === 'connected') {
+      reply.type('text/html').send(`
+        <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+        <title>WhatsApp Bot</title>
+        <style>body{font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#0a1628;color:#fff;text-align:center}
+        .card{padding:40px;border-radius:16px;background:#111b2e}</style></head>
+        <body><div class="card"><div style="font-size:64px;margin-bottom:16px">✅</div>
+        <h2>WhatsApp conectado</h2><p style="color:#888">El bot está funcionando correctamente</p></div></body></html>
+      `)
+      return
+    }
+
+    if (!currentQR) {
+      reply.type('text/html').send(`
+        <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+        <meta http-equiv="refresh" content="3">
+        <title>WhatsApp Bot</title>
+        <style>body{font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#0a1628;color:#fff;text-align:center}
+        .card{padding:40px;border-radius:16px;background:#111b2e}</style></head>
+        <body><div class="card"><div style="font-size:64px;margin-bottom:16px">⏳</div>
+        <h2>Generando QR...</h2><p style="color:#888">Esta página se actualiza automáticamente</p></div></body></html>
+      `)
+      return
+    }
+
+    try {
+      const qrImage = await QRCode.toDataURL(currentQR, { width: 300, margin: 2 })
+      reply.type('text/html').send(`
+        <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+        <meta http-equiv="refresh" content="15">
+        <title>Escanear QR - WhatsApp Bot</title>
+        <style>body{font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#0a1628;color:#fff;text-align:center}
+        .card{padding:40px;border-radius:16px;background:#111b2e}
+        img{border-radius:12px;margin:20px 0}
+        ol{text-align:left;color:#aaa;line-height:2}</style></head>
+        <body><div class="card"><h2>Escanea con WhatsApp</h2>
+        <img src="${qrImage}" alt="QR" width="260" height="260">
+        <ol><li>Abre WhatsApp en tu móvil</li><li>Ajustes → Dispositivos vinculados</li><li>Vincular un dispositivo</li><li>Escanea este código</li></ol>
+        <p style="color:#666;font-size:13px">Se actualiza cada 15s</p></div></body></html>
+      `)
+    } catch {
+      reply.status(500).send({ error: 'Error generando QR' })
+    }
+  })
+
+  // JSON del QR (para integraciones)
+  fastify.get('/api/qr', async () => {
+    return {
+      status: connectionStatus,
+      qr: currentQR,
+      connected: connectionStatus === 'connected'
+    }
+  })
+
   // Reinicio: borra auth_info y reinicia el proceso
   fastify.post('/api/restart', async (_request, reply) => {
     logger.info('[SERVER] Reinicio solicitado via API')
@@ -69,13 +126,13 @@ export async function startServer() {
   if (config.BOT_MODE === 'sandbox') {
     const { registerSandboxRoutes } = await import('./sandbox/index.js')
     await registerSandboxRoutes(fastify)
-    logger.info(`[SERVER] Modo SANDBOX - UI en http://localhost:${config.PORT}`)
+    logger.info(`[SERVER] Modo SANDBOX activo`)
   } else {
     logger.info(`[SERVER] Modo PRODUCTION - Solo APIs`)
   }
   
   await fastify.listen({ port: config.PORT, host: '0.0.0.0' })
-  logger.info(`[SERVER] Puerto ${config.PORT}`)
+  logger.info(`[SERVER] Escuchando en puerto ${config.PORT}`)
   
   return fastify
 }
