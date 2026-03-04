@@ -1,4 +1,6 @@
 import Fastify from 'fastify'
+import { rmSync } from 'fs'
+import { join } from 'path'
 import { config } from '../config/env.js'
 import { logger } from '../utils/logger.js'
 
@@ -43,6 +45,26 @@ export async function startServer() {
     mode: config.BOT_MODE
   }))
   
+  // Reinicio: borra auth_info y reinicia el proceso
+  fastify.post('/api/restart', async (_request, reply) => {
+    logger.info('[SERVER] Reinicio solicitado via API')
+
+    try {
+      rmSync(join(process.cwd(), 'auth_info'), { recursive: true, force: true })
+      logger.info('[SERVER] Carpeta auth_info eliminada')
+    } catch (error) {
+      logger.warn('[SERVER] No se pudo borrar auth_info (puede que no exista):', error)
+    }
+
+    reply.send({ status: 'restarting', message: 'Borrando sesión y reiniciando...' })
+
+    // Dar tiempo a que la respuesta se envíe antes de salir
+    setTimeout(() => {
+      logger.info('[SERVER] Reiniciando proceso...')
+      process.exit(0)
+    }, 500)
+  })
+
   // Rutas del sandbox (solo en modo sandbox)
   if (config.BOT_MODE === 'sandbox') {
     const { registerSandboxRoutes } = await import('./sandbox/index.js')

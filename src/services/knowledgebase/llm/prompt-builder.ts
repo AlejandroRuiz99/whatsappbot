@@ -7,8 +7,9 @@ import { readFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { config } from '../../../config/env.js'
+import { botConfig } from '../../../config/bot-config.js'
 import { buscarServicios } from '../services-catalog/catalog.data.js'
-import { getConversationContext } from '../../conversation/memory.js'
+import { getConversationContext, getUserMessageCount, getUserTotalChars } from '../../conversation/memory.js'
 import { formatVideosForLLM, type RAGResult } from '../rag/rag.service.js'
 
 // Ruta al directorio de prompts
@@ -73,6 +74,34 @@ function buildRAGContext(ragContext: RAGResult): string {
 }
 
 /**
+ * Genera un saludo contextual según la hora en España (Europe/Madrid)
+ */
+function getTimeGreeting(): string {
+  const now = new Date()
+  const spainTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Madrid' }))
+  const hour = spainTime.getHours()
+  const dayOfWeek = spainTime.getDay()
+  const tg = botConfig.timeGreeting
+  
+  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+  
+  let greeting: string
+  if (hour >= tg.morningStart && hour < tg.afternoonStart) {
+    greeting = 'Es por la mañana en España.'
+  } else if (hour >= tg.afternoonStart && hour < tg.nightStart) {
+    greeting = 'Es por la tarde en España.'
+  } else {
+    greeting = 'Es de noche en España, fuera de horario habitual.'
+  }
+  
+  if (isWeekend) {
+    greeting += ' Hoy es fin de semana.'
+  }
+  
+  return `${greeting} Adapta tu saludo de forma natural (buenos días/buenas tardes/buenas noches) solo si es la primera interacción. No lo fuerces en cada mensaje.`
+}
+
+/**
  * Construye el system prompt completo
  */
 export function buildSystemPrompt(
@@ -82,14 +111,41 @@ export function buildSystemPrompt(
 ): string {
   const basePrompt = loadPrompt('system.txt')
   const prompt = interpolate(basePrompt, {
-    BOOKING_URL: config.BOOKING_URL
+    BOOKING_URL: config.BOOKING_URL,
+    TIME_GREETING: getTimeGreeting()
   })
   
   const servicesContext = buildServicesContext(userMessage)
   const conversationContext = phone ? getConversationContext(phone) : ''
   const ragSection = ragContext?.context ? buildRAGContext(ragContext) : ''
   
-  return `${prompt}${ragSection}${servicesContext}${conversationContext}`
+  const softLimitHint = phone ? buildSoftLimitHint(phone) : ''
+
+  return `${prompt}${ragSection}${servicesContext}${conversationContext}${softLimitHint}`
+}
+
+/**
+ * Escala la presión para derivar a consulta según cuánto ha contado el cliente.
+ * Usa caracteres totales (mejor que contar mensajes: 3 mensajes cortos de "hola" no son lo mismo
+ * que 3 mensajes largos explicando un despido).
+ * También usa mensaje count como tope: aunque digan poco, si llevan muchos mensajes hay que derivar.
+ */
+function buildSoftLimitHint(phone: string): string {
+  const msgCount = getUserMessageCount(phone)
+  const totalChars = getUserTotalChars(phone)
+  const sl = botConfig.softLimits
+
+  if (totalChars < sl.phase1.maxChars && msgCount <= sl.phase1.maxMessages) return ''
+
+  if (totalChars < sl.phase2.maxChars && msgCount <= sl.phase2.maxMessages) {
+    return '\n\nNOTA INTERNA: Ya tienes contexto suficiente del problema. Si no lo has hecho aún, busca un momento natural para mencionar que esto convendría verlo en consulta. No lo fuerces, pero si surge la oportunidad menciónalo como algo lógico para su caso.'
+  }
+
+  if (totalChars < sl.phase3.maxChars && msgCount <= sl.phase3.maxMessages) {
+    return '\n\nNOTA INTERNA: Ya tienes bastante información del cliente. Deberías haber sugerido la consulta. Si no lo has hecho, hazlo ahora. No des más info detallada gratis. Incluye el enlace de citas en tu respuesta.'
+  }
+
+  return `\n\nNOTA INTERNA: Llevas demasiado tiempo dando orientación gratis. Deja de dar información nueva. Responde brevemente y redirige a consulta con enlace y precio (${sl.consultationPrice}). Si el cliente sigue preguntando, responde algo como "Para esto necesitaría ver su caso en detalle en consulta" y punto.`
 }
 
 /**

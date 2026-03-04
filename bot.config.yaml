@@ -1,0 +1,97 @@
+# ─── Conversación y memoria ───
+conversation:
+  maxMessagesPerConversation: 10
+  maxConversations: 1000
+  ttlHours: 24
+  ragCacheTtlMinutes: 10
+  cleanupIntervalMinutes: 60
+
+# ─── Humanización (delays y formato WhatsApp) ───
+humanizer:
+  whatsappMaxLength: 180
+
+  cohesiveBlock:
+    maxSentences: 3
+    maxLength: 350
+    probability: 0.3
+
+  readingDelay:
+    veryShort: [300, 800]     # <20 chars
+    short: [800, 1800]        # <80 chars
+    medium: [1500, 3000]      # <200 chars
+    long: [2500, 4500]        # 200+ chars
+
+  typingDelay:
+    veryShort: [800, 2000]    # <30 chars
+    short: [1500, 3500]       # <80 chars
+    medium:                    # <180 chars
+      charsPerSecond: 55
+      min: 2500
+      max: 6000
+    long:                      # 180+ chars
+      charsPerSecond: 50
+      min: 4000
+      max: 10000
+
+  pauseBetweenMessages:
+    shortNext: [1500, 3000]   # siguiente <30 chars
+    mediumNext: [3000, 5000]  # siguiente <100 chars
+    longNext: [4500, 8000]    # siguiente 100+ chars
+    firstMessageFactor: 0.8
+    lastMessageExtra: [500, 2000]
+
+# ─── WhatsApp / Baileys ───
+whatsapp:
+  debounceMs: 1500
+  reconnectDelayMs: 5000
+  mediaDelay: [1000, 2500]
+  closureReactionDelay: [500, 1500]
+
+# ─── Escalado a humano ───
+escalation:
+  repeatMessageThreshold: 3
+
+# ─── LLM (modelos y parámetros) ───
+llm:
+  groq:
+    model: "llama-3.3-70b-versatile"
+    maxTokens: 600
+    temperature: 0.85
+    topP: 0.92
+    presencePenalty: 0.3
+    frequencyPenalty: 0.3
+  openai:
+    model: "gpt-3.5-turbo"
+    maxTokens: 550
+    temperature: 0.85
+    topP: 0.92
+    presencePenalty: 0.3
+    frequencyPenalty: 0.3
+
+# ─── Derivación a consulta (soft limits) ───
+softLimits:
+  phase1:
+    maxChars: 250
+    maxMessages: 5
+  phase2:
+    maxChars: 500
+    maxMessages: 7
+  phase3:
+    maxChars: 700
+    maxMessages: 9
+  consultationPrice: "69€"
+
+# ─── RAG ───
+rag:
+  maxVideoRecommendations: 3
+  snippetLength: 200
+  pinecone:
+    dimension: 1536
+    indexCheckMaxAttempts: 30
+    indexCheckIntervalMs: 10000
+
+# ─── Horarios (saludo contextual) ───
+timeGreeting:
+  morningStart: 6
+  afternoonStart: 14
+  nightStart: 21

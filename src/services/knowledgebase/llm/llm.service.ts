@@ -30,6 +30,47 @@ export { getLLMStatus } from './providers.js'
 export { buscarServicios, SERVICIOS, CATEGORIAS } from '../services-catalog/catalog.data.js'
 
 /**
+ * Limpia formato markdown que el LLM tiende a generar.
+ * En WhatsApp el markdown se ve como texto roto, no como formato.
+ */
+function stripMarkdown(text: string): string {
+  let clean = text
+  
+  // Headers: ### Título → Título
+  clean = clean.replace(/^#{1,6}\s+/gm, '')
+  
+  // Bold: **texto** o __texto__ → texto
+  clean = clean.replace(/\*\*(.*?)\*\*/g, '$1')
+  clean = clean.replace(/__(.*?)__/g, '$1')
+  
+  // Italic: *texto* o _texto_ → texto (cuidado con no romper emojis/contracciones)
+  clean = clean.replace(/(?<!\w)\*([^*\n]+)\*(?!\w)/g, '$1')
+  clean = clean.replace(/(?<!\w)_([^_\n]+)_(?!\w)/g, '$1')
+  
+  // Inline code: `código` → código
+  clean = clean.replace(/`([^`]+)`/g, '$1')
+  
+  // Code blocks: ```...``` → contenido
+  clean = clean.replace(/```[\s\S]*?```/g, (match) => {
+    return match.replace(/```\w*\n?/g, '').replace(/```/g, '').trim()
+  })
+
+  // Listas con viñetas: "- item" o "* item" al inicio de línea → sin viñeta
+  clean = clean.replace(/^[\s]*[-*]\s+/gm, '')
+  
+  // Listas numeradas: "1. item" → sin número (solo si parece lista, no "30 días")
+  clean = clean.replace(/^\s*\d+\.\s+/gm, '')
+
+  // Líneas horizontales: --- o *** → nada
+  clean = clean.replace(/^[-*_]{3,}\s*$/gm, '')
+  
+  // Limpiar líneas vacías excesivas (máximo 2 seguidas)
+  clean = clean.replace(/\n{3,}/g, '\n\n')
+  
+  return clean.trim()
+}
+
+/**
  * Construir mensajes para el LLM con historial de conversación
  */
 function buildMessages(
@@ -158,7 +199,7 @@ export async function getAIResponse(
     
     if (respuestaGroq) {
       logger.info('[LLM] ✅ Respuesta generada con Groq')
-      response = respuestaGroq
+      response = stripMarkdown(respuestaGroq)
       
       if (debugMode && ragContext && ragContext.chunks.length > 0) {
         response += formatDebugMarkers(ragContext)
@@ -181,7 +222,7 @@ export async function getAIResponse(
     
     if (respuestaOpenAI) {
       logger.info('[LLM] ✅ Respuesta generada con OpenAI')
-      response = respuestaOpenAI
+      response = stripMarkdown(respuestaOpenAI)
       
       if (debugMode && ragContext && ragContext.chunks.length > 0) {
         response += formatDebugMarkers(ragContext)

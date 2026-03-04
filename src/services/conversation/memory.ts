@@ -4,6 +4,7 @@
  */
 
 import { logger } from '../../utils/logger.js'
+import { botConfig } from '../../config/bot-config.js'
 import type { RetrievedChunk } from '../knowledgebase/rag/rag.service.js'
 
 interface Message {
@@ -28,11 +29,11 @@ interface Conversation {
   }
 }
 
-// Configuración
-const MAX_MESSAGES_PER_CONVERSATION = 10  // Últimos 10 mensajes
-const MAX_CONVERSATIONS = 1000            // Máximo 1000 conversaciones en memoria
-const CONVERSATION_TTL = 24 * 60 * 60 * 1000  // 24 horas de inactividad
-const RAG_CACHE_TTL = 10 * 60 * 1000      // 10 minutos de caché para RAG
+const { conversation: convConfig } = botConfig
+const MAX_MESSAGES_PER_CONVERSATION = convConfig.maxMessagesPerConversation
+const MAX_CONVERSATIONS = convConfig.maxConversations
+const CONVERSATION_TTL = convConfig.ttlHours * 60 * 60 * 1000
+const RAG_CACHE_TTL = convConfig.ragCacheTtlMinutes * 60 * 1000
 
 // Almacén de conversaciones (en memoria)
 const conversations = new Map<string, Conversation>()
@@ -212,8 +213,7 @@ function cleanupOldConversations(): void {
 export function startMemoryCleanup(): void {
   if (cleanupInterval) return
   
-  // Limpiar cada hora
-  cleanupInterval = setInterval(cleanupOldConversations, 60 * 60 * 1000)
+  cleanupInterval = setInterval(cleanupOldConversations, convConfig.cleanupIntervalMinutes * 60 * 1000)
   logger.info('[MEMORY] Sistema de memoria iniciado')
 }
 
@@ -278,6 +278,29 @@ export function clearRAGCache(phone: string): void {
     conversation.ragCache = undefined
     logger.debug(`[MEMORY] RAG cache limpiado para ${key}`)
   }
+}
+
+/**
+ * Cuenta mensajes del usuario en la conversación actual
+ */
+export function getUserMessageCount(phone: string): number {
+  const key = normalizePhone(phone)
+  const conversation = conversations.get(key)
+  if (!conversation) return 0
+  return conversation.messages.filter(m => m.role === 'user').length
+}
+
+/**
+ * Devuelve el total de caracteres que ha escrito el usuario.
+ * Mejor métrica que el número de mensajes para saber cuánto ha contado sobre su problema.
+ */
+export function getUserTotalChars(phone: string): number {
+  const key = normalizePhone(phone)
+  const conversation = conversations.get(key)
+  if (!conversation) return 0
+  return conversation.messages
+    .filter(m => m.role === 'user')
+    .reduce((sum, m) => sum + m.content.length, 0)
 }
 
 /**

@@ -174,6 +174,34 @@ export async function processSandboxMessage(
   return responses
 }
 
+/**
+ * Detecta si un mensaje es de cierre/despedida que no necesita respuesta de texto.
+ * Solo detecta mensajes cortos que son claramente de cierre, no frases más largas.
+ */
+export function isClosureMessage(text: string): boolean {
+  const cleaned = text.trim().toLowerCase()
+    .replace(/[.!,;¡¿?…]+/g, '')
+    .trim()
+
+  const closurePatterns = [
+    /^(muchas\s+)?gracias(\s+por\s+todo)?$/,
+    /^gracias\s+por\s+la\s+info(rmaci[oó]n)?$/,
+    /^(te|le)\s+agradezco$/,
+    /^ok(ay)?$/,
+    /^vale$/,
+    /^perfecto$/,
+    /^genial$/,
+    /^de\s+acuerdo$/,
+    /^entendido$/,
+    /^(muy\s+)?bien$/,
+    /^guay$/,
+    /^estupendo$/,
+    /^👍$/,
+  ]
+
+  return closurePatterns.some(p => p.test(cleaned))
+}
+
 // Utility: sleep helper
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))

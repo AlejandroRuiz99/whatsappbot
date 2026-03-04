@@ -1,175 +1,179 @@
 /**
  * Servicio de Humanización
- * Añade delays realistas, simula escritura y divide mensajes para hacer el bot más natural
+ * Delays realistas, escritura simulada y mensajes cortos estilo WhatsApp
  */
 
 import { logger } from '../../utils/logger.js'
+import { botConfig } from '../../config/bot-config.js'
+
+const h = botConfig.humanizer
 
 /**
- * Calcula un delay realista de escritura basado en el texto
- * @param text - Texto a enviar
- * @returns Delay en milisegundos
+ * Calcula un delay de "lectura" antes de empezar a escribir.
  */
-export function calculateTypingDelay(text: string): number {
-  // Parámetros de simulación
-  const MIN_DELAY = 2000  // Mínimo 2 segundos
-  const MAX_DELAY = 8000  // Máximo 8 segundos
-  const CHARS_PER_SECOND = 65  // Velocidad de escritura promedio (ajustada para ser natural)
-  
-  // Calcular delay base según longitud del texto
-  const baseDelay = (text.length / CHARS_PER_SECOND) * 1000
-  
-  // Añadir pausas por puntuación (más natural)
-  const sentences = text.split(/[.!?]+/).length
-  const commas = (text.match(/,/g) || []).length
-  const pauseDelay = (sentences * 300) + (commas * 150)
-  
-  // Delay total con variación aleatoria (±20%)
-  const totalDelay = baseDelay + pauseDelay
-  const randomVariation = 0.8 + (Math.random() * 0.4) // Entre 0.8 y 1.2
-  const finalDelay = totalDelay * randomVariation
-  
-  // Aplicar límites
-  return Math.max(MIN_DELAY, Math.min(MAX_DELAY, finalDelay))
+export function calculateReadingDelay(clientMessageLength: number): number {
+  const rd = h.readingDelay
+  if (clientMessageLength < 20) return randomBetween(rd.veryShort[0], rd.veryShort[1])
+  if (clientMessageLength < 80) return randomBetween(rd.short[0], rd.short[1])
+  if (clientMessageLength < 200) return randomBetween(rd.medium[0], rd.medium[1])
+  return randomBetween(rd.long[0], rd.long[1])
 }
 
 /**
- * Divide un texto largo en múltiples mensajes naturales
- * Split inteligente en puntos lógicos (párrafos, preguntas, puntos)
- * @param text - Texto a dividir
- * @returns Array de mensajes
+ * Calcula un delay realista de escritura.
+ */
+export function calculateTypingDelay(text: string): number {
+  const len = text.length
+  const td = h.typingDelay
+
+  if (len < 30) return randomBetween(td.veryShort[0], td.veryShort[1])
+  if (len < 80) return randomBetween(td.short[0], td.short[1])
+
+  if (len < 180) {
+    const base = (len / td.medium.charsPerSecond) * 1000
+    return randomBetween(Math.max(td.medium.min, base * 0.8), Math.min(td.medium.max, base * 1.3))
+  }
+
+  const base = (len / td.long.charsPerSecond) * 1000
+  return randomBetween(Math.max(td.long.min, base * 0.7), Math.min(td.long.max, base * 1.1))
+}
+
+/**
+ * Divide texto en mensajes cortos estilo WhatsApp.
  */
 export function splitIntoNaturalMessages(text: string): string[] {
-  const MAX_LENGTH = 300  // Longitud ideal para un mensaje (no muy largo)
-  
-  // Si el texto es corto, devolver como está
-  if (text.length <= MAX_LENGTH) {
-    return [text.trim()]
+  const trimmed = text.trim()
+  const maxLen = h.whatsappMaxLength
+
+  if (trimmed.length <= maxLen) {
+    return [trimmed]
   }
-  
+
+  const cb = h.cohesiveBlock
+  const hasParagraphs = trimmed.includes('\n\n')
+  const sentenceCount = (trimmed.match(/[.!?]+/g) || []).length
+  if (!hasParagraphs && sentenceCount <= cb.maxSentences && trimmed.length <= cb.maxLength && Math.random() < cb.probability) {
+    return [trimmed]
+  }
+
   const messages: string[] = []
-  
-  // Intentar dividir por párrafos primero (doble salto de línea)
-  const paragraphs = text.split('\n\n').filter(p => p.trim().length > 0)
-  
-  if (paragraphs.length > 1) {
-    // Hay párrafos claros - agrupar si son cortos
-    let currentMessage = ''
-    
-    for (const paragraph of paragraphs) {
-      if (currentMessage.length === 0) {
-        currentMessage = paragraph.trim()
-      } else if (currentMessage.length + paragraph.length < MAX_LENGTH) {
-        currentMessage += '\n\n' + paragraph.trim()
+  const paragraphs = trimmed.split('\n\n').filter(p => p.trim().length > 0)
+
+  for (const paragraph of paragraphs) {
+    const cleaned = paragraph.trim()
+
+    if (cleaned.length <= maxLen) {
+      messages.push(cleaned)
+      continue
+    }
+
+    const sentences = cleaned.split(/(?<=[.!?])\s+/)
+    let current = ''
+
+    for (const sentence of sentences) {
+      if (current.length === 0) {
+        current = sentence
+      } else if (current.length + sentence.length + 1 <= maxLen) {
+        current += ' ' + sentence
       } else {
-        messages.push(currentMessage)
-        currentMessage = paragraph.trim()
+        messages.push(current.trim())
+        current = sentence
       }
     }
-    
-    if (currentMessage.length > 0) {
-      messages.push(currentMessage)
+
+    if (current.trim().length > 0) {
+      messages.push(current.trim())
     }
-    
-    return messages
   }
-  
-  // Si no hay párrafos, dividir por oraciones
-  const sentences = text.split(/(?<=[.!?])\s+/)
-  let currentMessage = ''
-  
-  for (const sentence of sentences) {
-    if (currentMessage.length === 0) {
-      currentMessage = sentence
-    } else if (currentMessage.length + sentence.length < MAX_LENGTH) {
-      currentMessage += ' ' + sentence
+
+  const result: string[] = []
+  for (const msg of messages) {
+    if (msg.length <= maxLen * 1.5) {
+      result.push(msg)
     } else {
-      messages.push(currentMessage.trim())
-      currentMessage = sentence
+      const parts = splitAtCommas(msg, maxLen)
+      result.push(...parts)
     }
   }
-  
-  if (currentMessage.length > 0) {
-    messages.push(currentMessage.trim())
+
+  return result.length > 0 ? result : [trimmed]
+}
+
+function splitAtCommas(text: string, maxLen: number): string[] {
+  const parts: string[] = []
+  const segments = text.split(/,\s*/)
+  let current = ''
+
+  for (const seg of segments) {
+    if (current.length === 0) {
+      current = seg
+    } else if (current.length + seg.length + 2 <= maxLen) {
+      current += ', ' + seg
+    } else {
+      parts.push(current.trim())
+      current = seg
+    }
   }
-  
-  // Si aún no se dividió bien (oraciones muy largas), dividir por longitud
-  if (messages.length === 0 || messages.some(m => m.length > MAX_LENGTH * 1.5)) {
-    return [text.trim()]
+
+  if (current.trim().length > 0) {
+    parts.push(current.trim())
   }
-  
-  return messages
+
+  return parts
 }
 
 /**
  * Simula typing indicator y envía mensaje después del delay
- * @param chat - Chat de WhatsApp (con métodos sendStateTyping y sendMessage)
- * @param text - Texto a enviar
- * @returns Promise que se resuelve cuando se envía el mensaje
  */
 export async function simulateTypingAndSend(
   chat: any,
   text: string
 ): Promise<void> {
   const delay = calculateTypingDelay(text)
-  
-  logger.debug(`[HUMANIZER] Simulando escritura: ${Math.round(delay / 1000)}s para ${text.length} caracteres`)
-  
-  // Mostrar indicador de "escribiendo..." si está disponible
+
+  logger.debug(`[HUMANIZER] Simulando escritura: ${Math.round(delay / 1000)}s para ${text.length} chars`)
+
   if (chat.sendStateTyping) {
     await chat.sendStateTyping()
   }
-  
-  // Esperar el delay calculado
+
   await sleep(delay)
-  
-  // Enviar mensaje
+
   if (chat.sendMessage) {
     await chat.sendMessage(text)
   }
-  
-  logger.debug(`[HUMANIZER] Mensaje enviado`)
 }
 
 /**
- * Envía múltiples mensajes con delays naturales entre ellos
- * @param chat - Chat de WhatsApp (con métodos sendStateTyping y sendMessage)
- * @param text - Texto completo a enviar
- * @returns Promise que se resuelve cuando se envían todos los mensajes
+ * Envía múltiples mensajes con pausas naturales entre ellos.
  */
 export async function sendHumanizedMessage(
   chat: any,
   text: string
 ): Promise<void> {
   const messages = splitIntoNaturalMessages(text)
-  
+
   if (messages.length === 1) {
-    // Un solo mensaje - enviar con typing normal
     await simulateTypingAndSend(chat, messages[0])
     return
   }
-  
-  // Múltiples mensajes - enviar con pausas entre ellos
+
   logger.debug(`[HUMANIZER] Enviando ${messages.length} mensajes separados`)
-  
+
   for (let i = 0; i < messages.length; i++) {
     await simulateTypingAndSend(chat, messages[i])
-    
-    // Pausa entre mensajes (excepto después del último)
+
     if (i < messages.length - 1) {
-      const pauseBetweenMessages = randomBetween(2000, 4000)
-      logger.debug(`[HUMANIZER] Pausa entre mensajes: ${Math.round(pauseBetweenMessages / 1000)}s`)
-      await sleep(pauseBetweenMessages)
+      const nextLen = messages[i + 1].length
+      const pause = pauseBetweenMessages(i, messages.length, nextLen)
+      logger.debug(`[HUMANIZER] Pausa entre mensajes: ${Math.round(pause / 1000)}s (siguiente: ${nextLen} chars)`)
+      await sleep(pause)
     }
   }
 }
 
 /**
- * Versión simplificada para sandbox (sin WhatsApp real)
- * Envía mensaje con delay pero sin API de WhatsApp
- * @param to - Destinatario
- * @param text - Texto a enviar
- * @param sendMessage - Función de envío
+ * Versión para sandbox (sin WhatsApp real)
  */
 export async function sendHumanizedMessageSandbox(
   to: string,
@@ -177,59 +181,58 @@ export async function sendHumanizedMessageSandbox(
   sendMessage: (to: string, text: string) => Promise<void>
 ): Promise<void> {
   const messages = splitIntoNaturalMessages(text)
-  
+
   for (let i = 0; i < messages.length; i++) {
     const delay = calculateTypingDelay(messages[i])
-    
-    logger.debug(`[HUMANIZER] [SANDBOX] Simulando escritura: ${Math.round(delay / 1000)}s`)
-    
-    // Simular delay de escritura (en sandbox no hay typing indicator real)
     await sleep(delay)
-    
-    // Enviar mensaje
     await sendMessage(to, messages[i])
-    
-    // Pausa entre mensajes si hay más
+
     if (i < messages.length - 1) {
-      const pauseBetweenMessages = randomBetween(2000, 4000)
-      logger.debug(`[HUMANIZER] [SANDBOX] Pausa entre mensajes: ${Math.round(pauseBetweenMessages / 1000)}s`)
-      await sleep(pauseBetweenMessages)
+      const nextLen = messages[i + 1].length
+      const pause = pauseBetweenMessages(i, messages.length, nextLen)
+      await sleep(pause)
     }
   }
 }
 
 /**
- * Añade variación humana ocasional (OPCIONAL - actualmente deshabilitado)
- * Podría añadir correcciones simuladas, pero mejor mantenerlo simple y profesional
- * @param text - Texto original
- * @param probability - Probabilidad de añadir variación (0-1)
- * @returns Texto con o sin variación
+ * Calcula la pausa entre mensajes consecutivos.
  */
-export function addHumanVariation(text: string, probability: number = 0.05): string {
-  // Por ahora retornamos el texto sin cambios para mantener profesionalismo
-  // En el futuro se podría implementar variaciones muy sutiles si se requiere
+export function pauseBetweenMessages(index: number, total: number, nextMessageLength: number): number {
+  const pbm = h.pauseBetweenMessages
+  let base: number
+
+  if (nextMessageLength < 30) {
+    base = randomBetween(pbm.shortNext[0], pbm.shortNext[1])
+  } else if (nextMessageLength < 100) {
+    base = randomBetween(pbm.mediumNext[0], pbm.mediumNext[1])
+  } else {
+    base = randomBetween(pbm.longNext[0], pbm.longNext[1])
+  }
+
+  if (index === 0) {
+    base = Math.round(base * pbm.firstMessageFactor)
+  }
+
+  if (index >= total - 2) {
+    base += randomBetween(pbm.lastMessageExtra[0], pbm.lastMessageExtra[1])
+  }
+
+  return base
+}
+
+export function addHumanVariation(text: string, _probability: number = 0.05): string {
   return text
 }
 
-// Utilidades
-
-/**
- * Sleep helper
- */
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-/**
- * Número aleatorio entre min y max
- */
 function randomBetween(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min
 }
 
-/**
- * Obtener estadísticas de humanización (para debugging)
- */
 export function getHumanizationStats(text: string): {
   messageCount: number
   averageDelay: number
@@ -240,10 +243,8 @@ export function getHumanizationStats(text: string): {
   const delays = messages.map(m => calculateTypingDelay(m))
   const totalDelay = delays.reduce((sum, d) => sum + d, 0)
   const averageDelay = totalDelay / delays.length
-  
-  // Añadir pausas entre mensajes
-  const pauseDelay = (messages.length - 1) * 3000 // promedio de 3s entre mensajes
-  
+  const pauseDelay = (messages.length - 1) * 2000
+
   return {
     messageCount: messages.length,
     averageDelay: Math.round(averageDelay),

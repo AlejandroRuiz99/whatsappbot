@@ -1,4 +1,5 @@
 import { logger } from '../../utils/logger.js'
+import { botConfig } from '../../config/bot-config.js'
 
 // Palabras clave de URGENCIA
 const URGENCIA_KEYWORDS = [
@@ -31,7 +32,7 @@ function detectarMensajeRepetido(phone: string, message: string): boolean {
   
   if (registro && registro.ultimo === lower) {
     registro.contador++
-    if (registro.contador >= 3) {
+    if (registro.contador >= botConfig.escalation.repeatMessageThreshold) {
       mensajesRepetidos.delete(phone) // Resetear después de escalar
       return true
     }

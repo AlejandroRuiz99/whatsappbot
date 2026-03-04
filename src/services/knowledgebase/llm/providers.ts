@@ -5,9 +5,12 @@
 import OpenAI from 'openai'
 import Groq from 'groq-sdk'
 import { config } from '../../../config/env.js'
+import { botConfig } from '../../../config/bot-config.js'
 import { logger } from '../../../utils/logger.js'
 
-// Verificar si hay API keys válidas
+const groqConfig = botConfig.llm.groq
+const openaiConfig = botConfig.llm.openai
+
 export const hasGroqKey = config.GROQ_API_KEY && 
   config.GROQ_API_KEY !== 'gsk_your-groq-key-here' && 
   config.GROQ_API_KEY.startsWith('gsk_')
@@ -16,22 +19,14 @@ export const hasOpenAIKey = config.OPENAI_API_KEY &&
   config.OPENAI_API_KEY !== 'sk-your-key-here' && 
   config.OPENAI_API_KEY.startsWith('sk-')
 
-// Inicializar clientes
 export const groq = hasGroqKey ? new Groq({ apiKey: config.GROQ_API_KEY }) : null
 export const openai = hasOpenAIKey ? new OpenAI({ apiKey: config.OPENAI_API_KEY }) : null
 
-// Modelo de Groq a usar
-export const GROQ_MODEL = 'llama-3.3-70b-versatile'
-
-// Tipo para mensajes del chat
 export type ChatMessage = {
   role: 'system' | 'user' | 'assistant'
   content: string
 }
 
-/**
- * Generar respuesta con Groq (Llama 3)
- */
 export async function generateWithGroq(
   messages: ChatMessage[]
 ): Promise<string | null> {
@@ -39,13 +34,13 @@ export async function generateWithGroq(
   
   try {
     const completion = await groq.chat.completions.create({
-      model: GROQ_MODEL,
+      model: groqConfig.model,
       messages,
-      max_tokens: 600,
-      temperature: 0.85,
-      top_p: 0.92,
-      presence_penalty: 0.3,
-      frequency_penalty: 0.3,
+      max_tokens: groqConfig.maxTokens,
+      temperature: groqConfig.temperature,
+      top_p: groqConfig.topP,
+      presence_penalty: groqConfig.presencePenalty,
+      frequency_penalty: groqConfig.frequencyPenalty,
     })
 
     return completion.choices[0]?.message?.content || null
@@ -55,9 +50,6 @@ export async function generateWithGroq(
   }
 }
 
-/**
- * Generar respuesta con OpenAI (fallback)
- */
 export async function generateWithOpenAI(
   messages: ChatMessage[]
 ): Promise<string | null> {
@@ -65,13 +57,13 @@ export async function generateWithOpenAI(
   
   try {
     const completion = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model: openaiConfig.model,
       messages,
-      max_tokens: 550,
-      temperature: 0.85,
-      top_p: 0.92,
-      presence_penalty: 0.3,
-      frequency_penalty: 0.3,
+      max_tokens: openaiConfig.maxTokens,
+      temperature: openaiConfig.temperature,
+      top_p: openaiConfig.topP,
+      presence_penalty: openaiConfig.presencePenalty,
+      frequency_penalty: openaiConfig.frequencyPenalty,
     })
 
     return completion.choices[0].message.content || null
@@ -81,11 +73,8 @@ export async function generateWithOpenAI(
   }
 }
 
-/**
- * Obtener estado del LLM configurado
- */
 export function getLLMStatus(): { provider: string; configured: boolean } {
-  if (hasGroqKey) return { provider: 'Groq (Llama 3)', configured: true }
-  if (hasOpenAIKey) return { provider: 'OpenAI (GPT-3.5)', configured: true }
+  if (hasGroqKey) return { provider: `Groq (${groqConfig.model})`, configured: true }
+  if (hasOpenAIKey) return { provider: `OpenAI (${openaiConfig.model})`, configured: true }
   return { provider: 'Sistema Local', configured: false }
 }
