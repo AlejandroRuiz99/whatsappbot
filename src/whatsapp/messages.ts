@@ -3,6 +3,7 @@
  */
 
 import { config } from '../config/env.js'
+import { pickRandom } from '../utils/helpers.js'
 
 const existingClientVariants = [
   `Hola, qué tal! Le escribimos desde Compromiso Legal. Para clientes como usted tenemos un canal en Telegram que es más directo y cómodo para gestionar consultas\n\nLe dejo el enlace: ${config.TELEGRAM_LINK}`,
@@ -29,14 +30,21 @@ const errorVariants = [
   'Lo siento, ha ocurrido un error. Si me repite la consulta se lo intento resolver.',
 ]
 
-function pickRandom<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)]
-}
+const extranjeriaVariants = [
+  'Hola! Para temas de extranjería, permisos de residencia y nacionalidad tenemos un número específico: 640 56 95 37. Es el mismo despacho, pero el equipo de extranjería trabaja desde ahí y le podrán atender mucho mejor.',
+
+  'Buenas! Los temas de residencia, nacionalidad y arraigo los llevamos desde un número específico del despacho: 640 56 95 37. Escríbales ahí que es el equipo especializado en extranjería.',
+
+  'Hola! Para lo que me comenta le voy a pasar el número del equipo de extranjería del despacho: 640 56 95 37. Es el mismo despacho, trabajamos juntos, pero ellos están especializados en estos temas y le darán una atención más directa.',
+
+  'Para temas de permisos, residencia o nacionalidad le recomiendo que contacte con nuestro equipo de extranjería en el 640 56 95 37. Es el despacho Compromiso Legal, mismo equipo, pero ese número es el que tienen habilitado para estos casos.',
+
+  'Hola! Ese tipo de consultas las gestiona el equipo de extranjería del despacho. Le paso su número: 640 56 95 37. Son los mismos, pero trabajan desde ahí para estos temas concretos.',
+]
 
 export const MESSAGES = {
   get existingClient() { return pickRandom(existingClientVariants) },
   get escalation() { return pickRandom(escalationVariants) },
   get error() { return pickRandom(errorVariants) },
+  get extranjeria() { return pickRandom(extranjeriaVariants) },
 }
-
-export type MessageKey = keyof typeof MESSAGES

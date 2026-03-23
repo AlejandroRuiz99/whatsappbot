@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url'
 import * as QRCode from 'qrcode'
 import { logger } from '../../utils/logger.js'
 import { getQRCode, getConnectionStatus } from '../http.js'
+import { deleteConversation } from '../../services/conversation/memory.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -26,22 +27,6 @@ const conversationHistory: Array<{
 let onSimulatedMessage: ((message: string, isExistingClient: boolean, debugMode: boolean) => Promise<Array<{ text: string; flow: string }>>) | null = null
 
 // ============= Funciones del sandbox =============
-
-export function getSandboxClientMode(): boolean {
-  return sandboxIsExistingClient
-}
-
-export function setSandboxClientMode(isExisting: boolean) {
-  sandboxIsExistingClient = isExisting
-}
-
-export function getSandboxDebugMode(): boolean {
-  return sandboxDebugMode
-}
-
-export function setSandboxDebugMode(debug: boolean) {
-  sandboxDebugMode = debug
-}
 
 export function addToConversation(from: 'user' | 'bot', message: string, flow?: string) {
   conversationHistory.push({
@@ -231,9 +216,11 @@ export async function registerSandboxRoutes(fastify: FastifyInstance) {
     return { success: true, debugMode: sandboxDebugMode }
   })
   
-  // API: Limpiar historial
+  // API: Nueva conversación — limpia historial visual + memoria del bot
   fastify.post('/api/conversation/clear', async () => {
     conversationHistory.length = 0
+    deleteConversation('sandbox_user')
+    logger.info('[SANDBOX] Nueva conversación: historial y memoria del bot reseteados')
     return { success: true }
   })
   

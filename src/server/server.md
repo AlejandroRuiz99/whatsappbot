@@ -6,8 +6,7 @@ Servidor HTTP del bot de WhatsApp con soporte para modo sandbox (desarrollo) y p
 
 ```
 server/
-├── http.ts              # Servidor base + estado de conexión
-├── websocket.ts         # Conexiones WebSocket
+├── http.ts              # Servidor base + estado de conexión + QR
 └── sandbox/             # Solo se carga si BOT_MODE=sandbox
     ├── index.ts         # Rutas y lógica del sandbox
     ├── handler.ts       # Procesa mensajes simulados
@@ -25,7 +24,7 @@ Controlado por `BOT_MODE` en `.env`:
 | Modo | Descripción |
 |------|-------------|
 | `sandbox` | UI completa + chat de pruebas + APIs de simulación |
-| `production` | Solo `/health` y `/api/status` |
+| `production` | Solo APIs mínimas + QR endpoint |
 
 ```bash
 # .env
@@ -43,42 +42,30 @@ Servidor HTTP base. **Siempre se carga** (producción y sandbox).
 
 **Estado de conexión:**
 - `currentQR` - Código QR actual para vincular WhatsApp
-- `connectionStatus` - Estado de la conexión
+- `connectionStatus` - Estado de la conexión (`disconnected | connecting | connected | reconnecting | logged_out`)
 
-**Rutas base:**
+**Rutas (disponibles en todos los modos):**
+
 | Endpoint | Descripción |
 |----------|-------------|
-| `GET /health` | Health check |
+| `GET /health` | Health check con estado y modo |
 | `GET /api/status` | Estado de conexión y modo |
+| `GET /qr` | Página HTML con QR para escanear (auto-refresh 15s) |
+| `GET /api/qr` | JSON con estado y QR string |
+| `POST /api/restart` | Borra `auth_info` y reinicia el proceso |
+
+> **Seguridad pendiente:** Los endpoints `/api/restart` y `/api/qr` no tienen autenticación.
+> Añadir API key antes de exponer a internet público.
 
 **Funciones exportadas:**
 
 | Función | Descripción |
 |---------|-------------|
 | `startServer()` | Inicia el servidor |
-| `setQRCode(qr)` | Establece código QR |
+| `setQRCode(qr)` | Establece código QR (llamado desde connection.ts) |
 | `getQRCode()` | Obtiene código QR actual |
-| `setConnectionStatus(status)` | Actualiza estado |
+| `setConnectionStatus(status)` | Actualiza estado (llamado desde connection.ts) |
 | `getConnectionStatus()` | Obtiene estado actual |
-
-**Carga condicional del sandbox:**
-```typescript
-if (config.BOT_MODE === 'sandbox') {
-  const { registerSandboxRoutes } = await import('./sandbox/index.js')
-  await registerSandboxRoutes(fastify)
-}
-```
-
-### `websocket.ts`
-
-Gestión de conexiones WebSocket para comunicación en tiempo real.
-
-| Función | Descripción |
-|---------|-------------|
-| `addClient(ws)` | Registra conexión |
-| `removeClient(ws)` | Elimina conexión |
-| `broadcast(data)` | Envía a todos los clientes |
-| `getClientCount()` | Número de clientes conectados |
 
 ---
 
@@ -112,10 +99,6 @@ Rutas y lógica del modo sandbox.
 | `registerSandboxRoutes(fastify)` | Registra rutas del sandbox |
 | `addToConversation(from, message, flow?)` | Agrega mensaje al historial |
 | `setMessageHandler(handler)` | Handler para mensajes simulados |
-| `getSandboxClientMode()` | ¿Simula cliente existente? |
-| `setSandboxClientMode(isExisting)` | Configura modo cliente |
-| `getSandboxDebugMode()` | ¿Modo debug activo? |
-| `setSandboxDebugMode(debug)` | Activa/desactiva debug |
 
 ### `sandbox/handler.ts`
 
@@ -133,7 +116,7 @@ Filtra mensajes según el modo de operación.
 shouldProcessMessage(from) → { allowed: boolean, reason: string }
 ```
 
-- `production`: permite todos los mensajes
+- `production`: permite todos los mensajes excepto grupos/broadcast
 - `sandbox`: solo permite mensajes de `TEST_PHONE_NUMBER`
 
 ---
@@ -157,26 +140,24 @@ type ConnectionStatus =
 ┌─────────────────────────────────────────────────┐
 │                   http.ts                       │
 │  Estado: QR, connectionStatus                   │
-│  Rutas: /health, /api/status                    │
+│  Rutas: /health, /api/status, /qr, /api/qr     │
+│         /api/restart                            │
 │  Carga sandbox si BOT_MODE=sandbox              │
 └────────────────────┬────────────────────────────┘
                      │
-      ┌──────────────┴──────────────┐
-      │                             │
-      ▼                             ▼
-┌───────────────┐         ┌─────────────────────┐
-│ websocket.ts  │         │ sandbox/ (opcional) │
-│ (real-time)   │         │                     │
-└───────────────┘         │ /                   │
-                          │ /sandbox            │
-                          │ /api/simulate       │
-                          │ /api/conversation   │
-                          │ /api/sandbox/*      │
-                          └─────────────────────┘
+                     ▼
+              ┌──────────────────────┐
+              │ sandbox/ (opcional)  │
+              │                      │
+              │ /                    │
+              │ /sandbox             │
+              │ /api/simulate        │
+              │ /api/conversation    │
+              │ /api/sandbox/*       │
+              └──────────────────────┘
 ```
 
 ## Dependencias
 
 - `fastify` - Framework HTTP
-- `qrcode` - Generación de códigos QR (solo sandbox)
-- `ws` - WebSockets (tipos)
+- `qrcode` - Generación de códigos QR

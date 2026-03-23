@@ -5,29 +5,24 @@
 
 import { config } from '../../../config/env.js'
 import { logger } from '../../../utils/logger.js'
-import { 
-  addUserMessage, 
-  addBotMessage, 
+import {
+  addUserMessage,
+  addBotMessage,
   getConversationHistory
 } from '../../conversation/memory.js'
+import { recordMetric } from '../../../utils/metrics.js'
 import { type RAGResult } from '../rag/rag.service.js'
 
-// Módulos internos
-import { 
-  hasGroqKey, 
-  hasOpenAIKey, 
-  generateWithGroq, 
+import {
+  hasGroqKey,
+  hasOpenAIKey,
+  generateWithGroq,
   generateWithOpenAI,
-  getLLMStatus,
   type ChatMessage
 } from './providers.js'
 import { generarRespuestaLocal } from './local.js'
 import { buildSystemPrompt } from './prompt-builder.js'
 import { getRAGContextWithCache } from './rag-cache.js'
-
-// Re-exportar para compatibilidad
-export { getLLMStatus } from './providers.js'
-export { buscarServicios, SERVICIOS, CATEGORIAS } from '../services-catalog/catalog.data.js'
 
 /**
  * Limpia formato markdown que el LLM tiende a generar.
@@ -35,21 +30,21 @@ export { buscarServicios, SERVICIOS, CATEGORIAS } from '../services-catalog/cata
  */
 function stripMarkdown(text: string): string {
   let clean = text
-  
+
   // Headers: ### Título → Título
   clean = clean.replace(/^#{1,6}\s+/gm, '')
-  
+
   // Bold: **texto** o __texto__ → texto
   clean = clean.replace(/\*\*(.*?)\*\*/g, '$1')
   clean = clean.replace(/__(.*?)__/g, '$1')
-  
-  // Italic: *texto* o _texto_ → texto (cuidado con no romper emojis/contracciones)
+
+  // Italic: *texto* o _texto_ → texto
   clean = clean.replace(/(?<!\w)\*([^*\n]+)\*(?!\w)/g, '$1')
   clean = clean.replace(/(?<!\w)_([^_\n]+)_(?!\w)/g, '$1')
-  
+
   // Inline code: `código` → código
   clean = clean.replace(/`([^`]+)`/g, '$1')
-  
+
   // Code blocks: ```...``` → contenido
   clean = clean.replace(/```[\s\S]*?```/g, (match) => {
     return match.replace(/```\w*\n?/g, '').replace(/```/g, '').trim()
@@ -57,16 +52,16 @@ function stripMarkdown(text: string): string {
 
   // Listas con viñetas: "- item" o "* item" al inicio de línea → sin viñeta
   clean = clean.replace(/^[\s]*[-*]\s+/gm, '')
-  
+
   // Listas numeradas: "1. item" → sin número (solo si parece lista, no "30 días")
   clean = clean.replace(/^\s*\d+\.\s+/gm, '')
 
   // Líneas horizontales: --- o *** → nada
   clean = clean.replace(/^[-*_]{3,}\s*$/gm, '')
-  
+
   // Limpiar líneas vacías excesivas (máximo 2 seguidas)
   clean = clean.replace(/\n{3,}/g, '\n\n')
-  
+
   return clean.trim()
 }
 
@@ -81,23 +76,22 @@ function buildMessages(
   const messages: ChatMessage[] = [
     { role: 'system', content: systemPrompt }
   ]
-  
-  // Añadir historial de conversación (últimos 10 mensajes)
+
   if (phone) {
     const history = getConversationHistory(phone)
     const recentHistory = history.slice(-10)
-    messages.push(...recentHistory.map(m => ({ 
-      role: m.role as 'user' | 'assistant', 
-      content: m.content 
+    messages.push(...recentHistory.map(m => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content
     })))
   }
-  
-  // Si el último mensaje del historial no es el actual, añadirlo
+
+  // Añadir el mensaje actual si no está ya como último mensaje de usuario
   const lastMsg = messages[messages.length - 1]
   if (!lastMsg || lastMsg.role !== 'user' || lastMsg.content !== userMessage) {
     messages.push({ role: 'user', content: userMessage })
   }
-  
+
   return messages
 }
 
@@ -106,21 +100,21 @@ function buildMessages(
  */
 function formatDebugMarkers(ragContext: RAGResult): string {
   let markers = '\n\n---\n🔍 DEBUG - Fuentes de información:\n'
-  
+
   ragContext.chunks.forEach((chunk, i) => {
     const similarity = (chunk.similarity * 100).toFixed(1)
-    markers += `\n📄 Fuente ${i+1}: Basado en video (similitud ${similarity}%)\n`
+    markers += `\n📄 Fuente ${i + 1}: Basado en video (similitud ${similarity}%)\n`
     markers += `   ${chunk.video_url}\n`
   })
-  
+
   if (ragContext.videos.length > 0) {
     markers += '\n📺 Videos relacionados recomendados:\n'
     ragContext.videos.forEach((video, i) => {
       const relevance = (video.relevance * 100).toFixed(1)
-      markers += `   ${i+1}. ${video.video_url} (${relevance}%)\n`
+      markers += `   ${i + 1}. ${video.video_url} (${relevance}%)\n`
     })
   }
-  
+
   return markers
 }
 
@@ -131,7 +125,7 @@ function logRAGChunks(ragContext: RAGResult, debugMode: boolean): void {
   ragContext.chunks.forEach((chunk, i) => {
     const similarity = (chunk.similarity * 100).toFixed(1)
     const preview = chunk.content.substring(0, 100).replace(/\n/g, ' ')
-    logger.debug(`[RAG] 📄 Chunk ${i+1}:`)
+    logger.debug(`[RAG] 📄 Chunk ${i + 1}:`)
     logger.debug(`     Video ID: ${chunk.video_id}`)
     logger.debug(`     Similitud: ${similarity}%`)
     logger.debug(`     Topics: ${chunk.topics.join(', ') || 'N/A'}`)
@@ -140,44 +134,81 @@ function logRAGChunks(ragContext: RAGResult, debugMode: boolean): void {
       logger.debug(`     URL: ${chunk.video_url}`)
     }
   })
-  
+
   if (ragContext.shouldIncludeVideoLinks) {
     logger.debug(`[RAG] 📺 Incluirá ${ragContext.videos.length} videos en la respuesta`)
     ragContext.videos.forEach((video, i) => {
-      logger.debug(`     Video ${i+1}: ${video.video_url} (Relevancia: ${(video.relevance * 100).toFixed(1)}%)`)
+      logger.debug(`     Video ${i + 1}: ${video.video_url} (Relevancia: ${(video.relevance * 100).toFixed(1)}%)`)
     })
   }
+}
+
+/**
+ * Intenta obtener respuesta de un proveedor LLM concreto.
+ * Devuelve null si el proveedor falla o no está disponible.
+ */
+async function tryProvider(
+  name: string,
+  generateFn: (messages: ChatMessage[]) => Promise<string | null>,
+  userMessage: string,
+  phone: string | undefined,
+  ragContext: RAGResult | undefined,
+  debugMode: boolean
+): Promise<string | null> {
+  logger.info(`[LLM] Usando ${name}...`)
+  const systemPrompt = buildSystemPrompt(userMessage, phone, ragContext)
+  const messages = buildMessages(systemPrompt, userMessage, phone)
+  const t0 = Date.now()
+  const result = await generateFn(messages)
+  const latency = Date.now() - t0
+  if (result) recordMetric('llm:latency', latency)
+
+  if (!result) return null
+
+  logger.info(`[LLM] ✅ Respuesta generada con ${name}`)
+  let response = stripMarkdown(result)
+
+  if (debugMode && ragContext && ragContext.chunks.length > 0) {
+    response += formatDebugMarkers(ragContext)
+  }
+
+  if (phone) {
+    addBotMessage(phone, response)
+  }
+
+  return response
 }
 
 /**
  * Función principal: obtiene respuesta del LLM
  */
 export async function getAIResponse(
-  userMessage: string, 
-  phone?: string, 
+  userMessage: string,
+  phone?: string,
   options?: { debugMode?: boolean }
 ): Promise<string> {
   const debugMode = options?.debugMode || false
-  
+
   // Guardar mensaje del usuario en memoria
   if (phone) {
     addUserMessage(phone, userMessage)
   }
-  
+
   // Obtener contexto RAG si está disponible
   let ragContext: RAGResult | undefined
   let usedCache = false
-  
+
   try {
     if (hasOpenAIKey && config.PINECONE_API_KEY) {
       logger.info('[RAG] Buscando contexto relevante...')
-      
+      recordMetric('rag:query')
+
       const result = await getRAGContextWithCache(userMessage, phone)
       ragContext = result.ragContext
       usedCache = result.usedCache
-      
+
       if (ragContext.chunks.length > 0) {
-        logger.info(`[RAG] ✅ Encontrados ${ragContext.chunks.length} chunks relevantes ${usedCache ? '(usando caché + nueva búsqueda)' : ''}`)
+        logger.info(`[RAG] ✅ Encontrados ${ragContext.chunks.length} chunks relevantes ${usedCache ? '(caché + búsqueda reducida)' : ''}`)
         logRAGChunks(ragContext, debugMode)
       } else {
         logger.info('[RAG] ❌ No se encontró contexto relevante, usando solo base de conocimiento estándar')
@@ -187,65 +218,31 @@ export async function getAIResponse(
     logger.warn('[RAG] ⚠️ Error obteniendo contexto RAG, continuando sin él:', error)
     ragContext = undefined
   }
-  
-  let response: string
-  
-  // 1. Primero intentar con Groq (más rápido y gratis)
+
+  // 1. Groq (principal, más rápido)
   if (hasGroqKey) {
-    logger.info('[LLM] Usando Groq (Llama 3)...')
-    const systemPrompt = buildSystemPrompt(userMessage, phone, ragContext)
-    const messages = buildMessages(systemPrompt, userMessage, phone)
-    const respuestaGroq = await generateWithGroq(messages)
-    
-    if (respuestaGroq) {
-      logger.info('[LLM] ✅ Respuesta generada con Groq')
-      response = stripMarkdown(respuestaGroq)
-      
-      if (debugMode && ragContext && ragContext.chunks.length > 0) {
-        response += formatDebugMarkers(ragContext)
-      }
-      
-      if (phone) {
-        addBotMessage(phone, response)
-      }
-      return response
-    }
+    const resp = await tryProvider('Groq (Llama 3)', generateWithGroq, userMessage, phone, ragContext, debugMode)
+    if (resp) return resp
     logger.warn('[LLM] Groq falló, intentando alternativas...')
   }
-  
-  // 2. Fallback: intentar con OpenAI si está configurado
+
+  // 2. OpenAI (fallback)
   if (hasOpenAIKey) {
-    logger.info('[LLM] Usando OpenAI...')
-    const systemPrompt = buildSystemPrompt(userMessage, phone, ragContext)
-    const messages = buildMessages(systemPrompt, userMessage, phone)
-    const respuestaOpenAI = await generateWithOpenAI(messages)
-    
-    if (respuestaOpenAI) {
-      logger.info('[LLM] ✅ Respuesta generada con OpenAI')
-      response = stripMarkdown(respuestaOpenAI)
-      
-      if (debugMode && ragContext && ragContext.chunks.length > 0) {
-        response += formatDebugMarkers(ragContext)
-      }
-      
-      if (phone) {
-        addBotMessage(phone, response)
-      }
-      return response
-    }
+    const resp = await tryProvider('OpenAI', generateWithOpenAI, userMessage, phone, ragContext, debugMode)
+    if (resp) return resp
     logger.warn('[LLM] OpenAI falló, usando sistema local')
   }
-  
-  // 3. Fallback final: sistema local
+
+  // 3. Sistema local (fallback final)
   if (!hasGroqKey && !hasOpenAIKey) {
     logger.info('[LLM] Sin API keys configuradas, usando sistema local')
   }
-  
-  response = generarRespuestaLocal(userMessage)
-  
+
+  const response = generarRespuestaLocal(userMessage)
+
   if (phone) {
     addBotMessage(phone, response)
   }
-  
+
   return response
 }

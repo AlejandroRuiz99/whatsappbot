@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Panel Admin — Compromiso Legal Bot</title>
+  <link rel="stylesheet" href="/admin/admin.css" />
+</head>
+<body>
+  <div class="layout">
+
+    <!-- ═══ SIDEBAR ═══ -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <span class="brand-icon">⚖️</span>
+        <div class="brand-text">
+          <span class="brand-title">Compromiso Legal</span>
+          <span class="brand-sub">Panel Admin</span>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <button class="nav-item active" data-section="chats">
+          <span class="nav-icon">💬</span>
+          <span class="nav-label">Chats</span>
+          <span class="nav-badge" id="badge-chats" style="display:none">0</span>
+        </button>
+        <button class="nav-item" data-section="logs">
+          <span class="nav-icon">📋</span>
+          <span class="nav-label">Logs</span>
+          <span class="nav-badge error" id="badge-logs" style="display:none">0</span>
+        </button>
+        <button class="nav-item" data-section="metrics">
+          <span class="nav-icon">📊</span>
+          <span class="nav-label">Métricas</span>
+        </button>
+        <button class="nav-item" data-section="connection">
+          <span class="nav-icon">📡</span>
+          <span class="nav-label">Conexión</span>
+          <span class="nav-badge error" id="badge-conn" style="display:none">!</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="status-row" id="sidebar-status">
+          <span class="status-dot" id="status-dot"></span>
+          <span class="status-text" id="status-text">Cargando...</span>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">Debug</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="debug-toggle" />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ═══ MAIN ═══ -->
+    <main class="main">
+
+      <!-- ── Sección CHATS ── -->
+      <section class="section active" id="section-chats">
+        <div class="section-header">
+          <h1>Conversaciones activas</h1>
+          <div class="header-actions">
+            <button class="btn btn-ghost" onclick="loadChats()">↻ Actualizar</button>
+          </div>
+        </div>
+        <div class="chats-layout">
+          <div class="chats-list" id="chats-list">
+            <div class="empty-state">
+              <span class="empty-icon">💬</span>
+              <p>Cargando conversaciones...</p>
+            </div>
+          </div>
+          <div class="chat-detail" id="chat-detail">
+            <div class="empty-state">
+              <span class="empty-icon">👈</span>
+              <p>Selecciona una conversación</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Sección LOGS ── -->
+      <section class="section" id="section-logs">
+        <div class="section-header">
+          <h1>Logs del sistema</h1>
+          <div class="header-actions">
+            <button class="btn btn-ghost" onclick="clearLogConsole()">🗑 Limpiar</button>
+          </div>
+        </div>
+        <div class="log-toolbar">
+          <input type="text" id="log-search" class="search-input" placeholder="🔍 Buscar en logs..." />
+          <div class="filter-group">
+            <button class="filter-btn active" data-level="info">INFO</button>
+            <button class="filter-btn active" data-level="warn">WARN</button>
+            <button class="filter-btn active" data-level="error">ERROR</button>
+            <button class="filter-btn" data-level="debug">DEBUG</button>
+            <button class="filter-btn active" data-level="bot">BOT</button>
+          </div>
+          <label class="autoscroll-label">
+            <input type="checkbox" id="autoscroll" checked />
+            Auto-scroll
+          </label>
+        </div>
+        <div class="log-console" id="log-console"></div>
+      </section>
+
+      <!-- ── Sección MÉTRICAS ── -->
+      <section class="section" id="section-metrics">
+        <div class="section-header">
+          <h1>Métricas</h1>
+          <div class="header-actions">
+            <span class="uptime-badge" id="uptime-display">⏱ —</span>
+          </div>
+        </div>
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-value" id="m-received">—</div>
+            <div class="metric-label">Mensajes recibidos</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value" id="m-sent">—</div>
+            <div class="metric-label">Mensajes enviados</div>
+          </div>
+          <div class="metric-card accent-warn">
+            <div class="metric-value" id="m-escalations">—</div>
+            <div class="metric-label">Escalaciones</div>
+          </div>
+          <div class="metric-card accent-error">
+            <div class="metric-value" id="m-errors">—</div>
+            <div class="metric-label">Errores</div>
+          </div>
+          <div class="metric-card accent-blue">
+            <div class="metric-value" id="m-latency">—</div>
+            <div class="metric-label">Latencia LLM (avg)</div>
+          </div>
+          <div class="metric-card accent-blue">
+            <div class="metric-value" id="m-rag">—</div>
+            <div class="metric-label">Consultas RAG</div>
+          </div>
+        </div>
+        <div class="charts-grid">
+          <div class="chart-card">
+            <h3 class="chart-title">Distribución de flujos</h3>
+            <div class="chart-container">
+              <canvas id="chart-flows"></canvas>
+            </div>
+          </div>
+          <div class="chart-card">
+            <h3 class="chart-title">Mensajes por hora (últimas 24h)</h3>
+            <div class="chart-container">
+              <canvas id="chart-hourly"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Sección CONEXIÓN ── -->
+      <section class="section" id="section-connection">
+        <div class="section-header">
+          <h1>Estado de conexión</h1>
+          <div class="header-actions">
+            <button class="btn btn-danger" id="restart-btn" onclick="restartBot()">⟳ Reiniciar sesión</button>
+          </div>
+        </div>
+        <div class="connection-grid">
+          <div class="conn-card">
+            <h3>Estado actual</h3>
+            <div class="conn-status-big" id="conn-status-big">
+              <span class="conn-dot big" id="conn-dot-big"></span>
+              <span id="conn-status-text">Cargando...</span>
+            </div>
+            <div class="conn-info" id="conn-user-info"></div>
+            <div class="conn-meta">
+              <div class="conn-meta-item">
+                <span class="conn-meta-label">Uptime</span>
+                <span class="conn-meta-value" id="conn-uptime">—</span>
+              </div>
+              <div class="conn-meta-item">
+                <span class="conn-meta-label">Mensajes pendientes</span>
+                <span class="conn-meta-value" id="conn-pending">—</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="conn-card" id="qr-card">
+            <h3>Código QR</h3>
+            <div id="qr-container">
+              <div class="qr-placeholder">
+                <span style="font-size:48px">📱</span>
+                <p>Conectado — sin QR activo</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="conn-card full-width">
+            <h3>Historial de conexión</h3>
+            <div class="conn-history" id="conn-history">
+              <div class="empty-state small"><p>Sin eventos de conexión recientes</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ═══ TOAST CONTAINER ═══ -->
+  <div id="toast-container"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="/admin/admin.js"></script>
+</body>
+</html>

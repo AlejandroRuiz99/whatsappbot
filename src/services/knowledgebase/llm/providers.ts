@@ -66,15 +66,9 @@ export async function generateWithOpenAI(
       frequency_penalty: openaiConfig.frequencyPenalty,
     })
 
-    return completion.choices[0].message.content || null
+    return completion.choices[0]?.message?.content || null
   } catch (error) {
     logger.error('[LLM] Error con OpenAI:', error)
     return null
   }
-}
-
-export function getLLMStatus(): { provider: string; configured: boolean } {
-  if (hasGroqKey) return { provider: `Groq (${groqConfig.model})`, configured: true }
-  if (hasOpenAIKey) return { provider: `OpenAI (${openaiConfig.model})`, configured: true }
-  return { provider: 'Sistema Local', configured: false }
 }

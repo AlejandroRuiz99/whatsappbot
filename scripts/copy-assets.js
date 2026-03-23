@@ -7,6 +7,10 @@ const assets = [
   { from: 'src/server/sandbox/sandbox.js', to: 'dist/server/sandbox/sandbox.js' },
   { from: 'src/server/sandbox/styles.css', to: 'dist/server/sandbox/styles.css' },
   { from: 'src/services/knowledgebase/llm/prompts', to: 'dist/services/knowledgebase/llm/prompts' },
+  // Admin panel
+  { from: 'src/server/admin/admin.html', to: 'dist/server/admin/admin.html' },
+  { from: 'src/server/admin/admin.js', to: 'dist/server/admin/admin.js' },
+  { from: 'src/server/admin/admin.css', to: 'dist/server/admin/admin.css' },
 ]
 
 const root = process.cwd()

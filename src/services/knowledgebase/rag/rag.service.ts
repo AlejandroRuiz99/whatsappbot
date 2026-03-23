@@ -243,11 +243,12 @@ export function formatVideosForLLM(videos: VideoReference[]): string {
 
 /**
  * Función principal: Obtener contexto RAG completo
+ * @param topK - Número de chunks a recuperar (override del valor por defecto de .env)
  */
-export async function getRAGContext(query: string): Promise<RAGResult> {
+export async function getRAGContext(query: string, topK?: number): Promise<RAGResult> {
   try {
     // Recuperar chunks relevantes
-    const chunks = await retrieveRelevantChunks(query)
+    const chunks = await retrieveRelevantChunks(query, topK)
 
     // Determinar si incluir videos
     const includeLinks = shouldIncludeVideoLinks(chunks)

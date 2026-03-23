@@ -3,8 +3,8 @@
  * Delays realistas, escritura simulada y mensajes cortos estilo WhatsApp
  */
 
-import { logger } from '../../utils/logger.js'
 import { botConfig } from '../../config/bot-config.js'
+import { randomBetween } from '../../utils/helpers.js'
 
 const h = botConfig.humanizer
 
@@ -123,79 +123,6 @@ function splitAtCommas(text: string, maxLen: number): string[] {
 }
 
 /**
- * Simula typing indicator y envía mensaje después del delay
- */
-export async function simulateTypingAndSend(
-  chat: any,
-  text: string
-): Promise<void> {
-  const delay = calculateTypingDelay(text)
-
-  logger.debug(`[HUMANIZER] Simulando escritura: ${Math.round(delay / 1000)}s para ${text.length} chars`)
-
-  if (chat.sendStateTyping) {
-    await chat.sendStateTyping()
-  }
-
-  await sleep(delay)
-
-  if (chat.sendMessage) {
-    await chat.sendMessage(text)
-  }
-}
-
-/**
- * Envía múltiples mensajes con pausas naturales entre ellos.
- */
-export async function sendHumanizedMessage(
-  chat: any,
-  text: string
-): Promise<void> {
-  const messages = splitIntoNaturalMessages(text)
-
-  if (messages.length === 1) {
-    await simulateTypingAndSend(chat, messages[0])
-    return
-  }
-
-  logger.debug(`[HUMANIZER] Enviando ${messages.length} mensajes separados`)
-
-  for (let i = 0; i < messages.length; i++) {
-    await simulateTypingAndSend(chat, messages[i])
-
-    if (i < messages.length - 1) {
-      const nextLen = messages[i + 1].length
-      const pause = pauseBetweenMessages(i, messages.length, nextLen)
-      logger.debug(`[HUMANIZER] Pausa entre mensajes: ${Math.round(pause / 1000)}s (siguiente: ${nextLen} chars)`)
-      await sleep(pause)
-    }
-  }
-}
-
-/**
- * Versión para sandbox (sin WhatsApp real)
- */
-export async function sendHumanizedMessageSandbox(
-  to: string,
-  text: string,
-  sendMessage: (to: string, text: string) => Promise<void>
-): Promise<void> {
-  const messages = splitIntoNaturalMessages(text)
-
-  for (let i = 0; i < messages.length; i++) {
-    const delay = calculateTypingDelay(messages[i])
-    await sleep(delay)
-    await sendMessage(to, messages[i])
-
-    if (i < messages.length - 1) {
-      const nextLen = messages[i + 1].length
-      const pause = pauseBetweenMessages(i, messages.length, nextLen)
-      await sleep(pause)
-    }
-  }
-}
-
-/**
  * Calcula la pausa entre mensajes consecutivos.
  */
 export function pauseBetweenMessages(index: number, total: number, nextMessageLength: number): number {
@@ -219,36 +146,4 @@ export function pauseBetweenMessages(index: number, total: number, nextMessageLe
   }
 
   return base
-}
-
-export function addHumanVariation(text: string, _probability: number = 0.05): string {
-  return text
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-function randomBetween(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min
-}
-
-export function getHumanizationStats(text: string): {
-  messageCount: number
-  averageDelay: number
-  totalDelay: number
-  characterCount: number
-} {
-  const messages = splitIntoNaturalMessages(text)
-  const delays = messages.map(m => calculateTypingDelay(m))
-  const totalDelay = delays.reduce((sum, d) => sum + d, 0)
-  const averageDelay = totalDelay / delays.length
-  const pauseDelay = (messages.length - 1) * 2000
-
-  return {
-    messageCount: messages.length,
-    averageDelay: Math.round(averageDelay),
-    totalDelay: Math.round(totalDelay + pauseDelay),
-    characterCount: text.length
-  }
 }

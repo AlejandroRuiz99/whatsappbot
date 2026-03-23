@@ -20,6 +20,7 @@ export const CATEGORIAS = {
   EXTRANJERIA: 'Extranjería',
   CONSUMO: 'Derecho del Consumidor',
   HERENCIAS: 'Herencias y Sucesiones',
+  SEGURIDAD_SOCIAL: 'Seguridad Social y Pensiones',
 }
 
 export const SERVICIOS: Servicio[] = [
@@ -369,7 +370,7 @@ export const SERVICIOS: Servicio[] = [
     nombre: 'Permiso de residencia',
     categoria: CATEGORIAS.EXTRANJERIA,
     descripcion: 'Solicitud y renovación de permisos de residencia.',
-    keywords: ['residencia', 'permiso', 'extranjero', 'NIE', 'tarjeta'],
+    keywords: ['residencia', 'permiso', 'extranjero', 'NIE', 'tarjeta', 'papeles', 'regularizar'],
     precioOrientativo: 'Desde 400€'
   },
   {
@@ -393,7 +394,7 @@ export const SERVICIOS: Servicio[] = [
     nombre: 'Arraigo social/laboral',
     categoria: CATEGORIAS.EXTRANJERIA,
     descripcion: 'Regularización por arraigo social, laboral o familiar.',
-    keywords: ['arraigo', 'social', 'laboral', 'regularización', 'papeles'],
+    keywords: ['arraigo', 'social', 'laboral', 'regularización', 'regularizacion', 'papeles', 'sin papeles'],
     precioOrientativo: 'Desde 500€'
   },
   {
@@ -505,6 +506,48 @@ export const SERVICIOS: Servicio[] = [
     precioOrientativo: 'Desde 200€'
   },
 
+  // ============ SEGURIDAD SOCIAL Y PENSIONES ============
+  {
+    id: 'ss-001',
+    nombre: 'Estudio personalizado de jubilación',
+    categoria: CATEGORIAS.SEGURIDAD_SOCIAL,
+    descripcion: 'Análisis completo de todos los escenarios posibles de jubilación, cálculo de cuánto cobraría en cada opción y recomendación clara sobre qué conviene más. Incluye informe detallado por escrito y videollamada de explicación.',
+    keywords: ['jubilacion', 'jubilación', 'pension', 'pensión', 'jubilarse', 'cuando me jubilo', 'cuánto cobro', 'años cotizados', 'jubilacion anticipada', 'jubilación anticipada', 'escenarios', 'calcular pension', 'calcular pensión', 'maximizar pension', 'maximizar pensión'],
+    precioOrientativo: '120€'
+  },
+  {
+    id: 'ss-002',
+    nombre: 'Suscripción mensual de asesoramiento laboral',
+    categoria: CATEGORIAS.SEGURIDAD_SOCIAL,
+    descripcion: 'Servicio de acompañamiento continuado: hasta 10 consultas al mes sobre cualquier tema de derecho laboral o seguridad social. Permanencia de 6 meses. Incluye 10% de descuento en trámites y escritos.',
+    keywords: ['suscripcion', 'suscripción', 'mensual', 'acompañamiento', 'seguimiento', 'consultas mensuales', 'incapacidad proceso', 'baja laboral proceso'],
+    precioOrientativo: 'Consultar'
+  },
+  {
+    id: 'ss-003',
+    nombre: 'Consulta de incapacidad permanente',
+    categoria: CATEGORIAS.SEGURIDAD_SOCIAL,
+    descripcion: 'Análisis del caso de incapacidad: viabilidad, requisitos de cotización, estrategia ante el INSS o mutua. Si hay resolución denegatoria, revisión de plazos e impugnación.',
+    keywords: ['incapacidad', 'incapacidad permanente', 'invalidez', 'baja', 'inss', 'mutua', 'resolucion', 'resolución', 'denegada', 'denegado', 'impugnar', 'tribunal medico', 'tribunal médico', '545 dias', '545 días'],
+    precioOrientativo: '69€'
+  },
+  {
+    id: 'ss-004',
+    nombre: 'Reclamación o impugnación de resolución INSS',
+    categoria: CATEGORIAS.SEGURIDAD_SOCIAL,
+    descripcion: 'Recurso contra resoluciones denegatorias del INSS o mutua en materia de incapacidad, jubilación o prestaciones. Hay plazos que no se pueden perder.',
+    keywords: ['impugnar', 'recurso', 'resolucion denegada', 'resolución denegada', 'inss deniega', 'denegaron', 'plazo recurso', 'reclamar inss'],
+    precioOrientativo: 'Consultar según caso'
+  },
+  {
+    id: 'ss-005',
+    nombre: 'Subsidio para mayores de 52 años',
+    categoria: CATEGORIAS.SEGURIDAD_SOCIAL,
+    descripcion: 'Asesoramiento sobre acceso al subsidio de mayores de 52 años, compatibilidad con incapacidad, requisitos de cotización y opciones para cumplir los 90 días necesarios.',
+    keywords: ['subsidio', 'mayores de 52', 'mayor de 52', '52 años', 'subsidio desempleo', 'paro mayores', 'compatibilidad incapacidad subsidio'],
+    precioOrientativo: '69€'
+  },
+
   // ============ DERECHO ADMINISTRATIVO ============
   {
     id: 'admin-001',
@@ -542,20 +585,12 @@ export const SERVICIOS: Servicio[] = [
 
 // Función para buscar servicios por keywords
 export function buscarServicios(consulta: string): Servicio[] {
-  const palabras = consulta.toLowerCase().split(/\s+/)
-  
+  const palabras = consulta.toLowerCase().split(/\s+/).filter(p => p.length > 0)
+
+  if (palabras.length === 0) return []
+
   return SERVICIOS.filter(servicio => {
     const textoServicio = `${servicio.nombre} ${servicio.descripcion} ${servicio.keywords.join(' ')}`.toLowerCase()
     return palabras.some(palabra => textoServicio.includes(palabra))
   }).slice(0, 5) // Máximo 5 resultados
-}
-
-// Función para obtener servicios por categoría
-export function obtenerServiciosPorCategoria(categoria: string): Servicio[] {
-  return SERVICIOS.filter(s => s.categoria === categoria)
-}
-
-// Función para obtener un servicio por ID
-export function obtenerServicioPorId(id: string): Servicio | undefined {
-  return SERVICIOS.find(s => s.id === id)
 }

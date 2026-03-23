@@ -10,13 +10,3 @@ export function isExistingClient(phone: string): boolean {
   const normalized = phone.replace(/\D/g, '')
   return EXISTING_CLIENTS.has(normalized)
 }
-
-export function addExistingClient(phone: string): void {
-  const normalized = phone.replace(/\D/g, '')
-  EXISTING_CLIENTS.add(normalized)
-}
-
-export function removeExistingClient(phone: string): void {
-  const normalized = phone.replace(/\D/g, '')
-  EXISTING_CLIENTS.delete(normalized)
-}

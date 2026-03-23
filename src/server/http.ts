@@ -130,6 +130,10 @@ export async function startServer() {
   } else {
     logger.info(`[SERVER] Modo PRODUCTION - Solo APIs`)
   }
+
+  // Panel de administración (siempre disponible, en cualquier modo)
+  const { registerAdminRoutes } = await import('./admin/index.js')
+  await registerAdminRoutes(fastify)
   
   await fastify.listen({ port: config.PORT, host: '0.0.0.0' })
   logger.info(`[SERVER] Escuchando en puerto ${config.PORT}`)

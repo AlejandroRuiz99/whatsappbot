@@ -23,49 +23,62 @@ const COMPLEJO_KEYWORDS = [
   'es complicado', 'es complejo', 'situación difícil'
 ]
 
-// Contador de mensajes repetidos por usuario
-const mensajesRepetidos = new Map<string, { ultimo: string; contador: number }>()
+// TTL para limpiar entradas antiguas de mensajes repetidos (24h)
+const MENSAJES_REPETIDOS_TTL_MS = 24 * 60 * 60 * 1000
+
+// Contador de mensajes repetidos por usuario (con timestamp para TTL)
+const mensajesRepetidos = new Map<string, { ultimo: string; contador: number; timestamp: number }>()
 
 function detectarMensajeRepetido(phone: string, message: string): boolean {
   const lower = message.toLowerCase().trim()
+  const now = Date.now()
+
+  // Limpiar entradas expiradas en cada llamada (coste O(n) amortizado con el TTL)
+  for (const [key, val] of mensajesRepetidos) {
+    if (now - val.timestamp > MENSAJES_REPETIDOS_TTL_MS) {
+      mensajesRepetidos.delete(key)
+    }
+  }
+
   const registro = mensajesRepetidos.get(phone)
-  
+
   if (registro && registro.ultimo === lower) {
     registro.contador++
+    registro.timestamp = now
     if (registro.contador >= botConfig.escalation.repeatMessageThreshold) {
       mensajesRepetidos.delete(phone) // Resetear después de escalar
       return true
     }
   } else {
-    mensajesRepetidos.set(phone, { ultimo: lower, contador: 1 })
+    mensajesRepetidos.set(phone, { ultimo: lower, contador: 1, timestamp: now })
   }
-  
+
   return false
 }
 
 export function shouldEscalate(message: string, phone?: string): { escalate: boolean; reason?: string } {
   const lower = message.toLowerCase()
-  
+
   // 1. Urgencia
   if (URGENCIA_KEYWORDS.some(kw => lower.includes(kw))) {
     return { escalate: true, reason: 'urgencia' }
   }
-  
+
   // 2. Sentimiento negativo / frustración
   if (NEGATIVO_KEYWORDS.some(kw => lower.includes(kw))) {
     return { escalate: true, reason: 'frustración' }
   }
-  
+
   // 3. Consulta compleja / confusión
   if (COMPLEJO_KEYWORDS.some(kw => lower.includes(kw))) {
     return { escalate: true, reason: 'consulta_compleja' }
   }
-  
+
   // 4. Mensaje repetido 3+ veces
   if (phone && detectarMensajeRepetido(phone, message)) {
     return { escalate: true, reason: 'mensaje_repetido' }
   }
-  
+
   return { escalate: false }
 }
 

@@ -1,11 +1,7 @@
 /**
  * Conversation - Servicios del flujo conversacional
- * 
- * Re-exporta todos los servicios de conversación:
- * - Memory: Historial y caché de conversaciones
- * - Classifier: Clasificación de clientes
- * - Escalate: Detección de escalado a humano
- * - Humanizer: Simulación de escritura natural
+ *
+ * Re-exporta los servicios activamente usados por el resto del proyecto.
  */
 
 // Memory Service
@@ -14,22 +10,16 @@ export {
   addBotMessage,
   getConversationHistory,
   getConversationContext,
-  setClientMetadata,
-  getClientMetadata,
-  clearConversation,
   startMemoryCleanup,
-  stopMemoryCleanup,
   cacheRAGChunks,
   getCachedRAGChunks,
-  clearRAGCache,
-  getMemoryStats
+  getUserMessageCount,
+  getUserTotalChars
 } from './memory.js'
 
 // Classifier Service
 export {
-  isExistingClient,
-  addExistingClient,
-  removeExistingClient
+  isExistingClient
 } from './classifier.js'
 
 // Escalate Service
@@ -40,11 +30,8 @@ export {
 
 // Humanizer Service
 export {
+  calculateReadingDelay,
   calculateTypingDelay,
   splitIntoNaturalMessages,
-  simulateTypingAndSend,
-  sendHumanizedMessage,
-  sendHumanizedMessageSandbox,
-  addHumanVariation,
-  getHumanizationStats
+  pauseBetweenMessages
 } from './humanizer.js'

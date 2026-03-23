@@ -79,7 +79,9 @@ softLimits:
   phase3:
     maxChars: 700
     maxMessages: 9
-  consultationPrice: "69€"
+  consultationPrice: "69€"         # Consulta genérica (laboral, civil, familia...)
+  studyPrice: "120€"              # Estudio personalizado jubilación
+  subscriptionLabel: "suscripción mensual"  # Para casos de incapacidad sin resolución
 
 # ─── RAG ───
 rag:
@@ -89,6 +91,32 @@ rag:
     dimension: 1536
     indexCheckMaxAttempts: 30
     indexCheckIntervalMs: 10000
+
+# ─── Extranjería (derivación a número específico) ───
+extranjeria:
+  redirectPhone: "640569537"
+  keywords:
+    - residencia
+    - permiso de residencia
+    - permiso de trabajo
+    - nacionalidad
+    - nie
+    - tarjeta de residencia
+    - arraigo
+    - reagrupación
+    - reagrupacion
+    - regularizar
+    - regularización
+    - regularizacion
+    - papeles
+    - asilo
+    - refugiado
+    - expulsión
+    - expulsion
+    - extranjería
+    - extranjeria
+    - visado
+    - visa
 
 # ─── Horarios (saludo contextual) ───
 timeGreeting:

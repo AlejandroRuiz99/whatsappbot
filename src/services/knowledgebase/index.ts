@@ -1,10 +1,7 @@
 /**
  * Knowledgebase - Fuentes de conocimiento del bot
- * 
- * Re-exporta todos los servicios de conocimiento:
- * - RAG: Búsqueda semántica en Pinecone
- * - LLM: Generación de respuestas con Groq/OpenAI
- * - Services Catalog: Lista de servicios legales
+ *
+ * Re-exporta los servicios activamente usados por el resto del proyecto.
  */
 
 // RAG Service
@@ -32,17 +29,11 @@ export {
 
 // LLM Service
 export {
-  getAIResponse,
-  getLLMStatus,
-  buscarServicios,
-  SERVICIOS,
-  CATEGORIAS
+  getAIResponse
 } from './llm/llm.service.js'
 
 // Services Catalog
 export {
-  buscarServicios as searchServices,
-  obtenerServiciosPorCategoria,
-  obtenerServicioPorId,
+  buscarServicios,
   type Servicio
 } from './services-catalog/catalog.data.js'

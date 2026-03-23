@@ -81,6 +81,8 @@ interface BotConfig {
     phase2: { maxChars: number; maxMessages: number }
     phase3: { maxChars: number; maxMessages: number }
     consultationPrice: string
+    studyPrice: string
+    subscriptionLabel: string
   }
   rag: {
     maxVideoRecommendations: number
@@ -91,6 +93,10 @@ interface BotConfig {
       indexCheckIntervalMs: number
     }
   }
+  extranjeria: {
+    redirectPhone: string
+    keywords: string[]
+  }
   timeGreeting: {
     morningStart: number
     afternoonStart: number
@@ -98,13 +104,36 @@ interface BotConfig {
   }
 }
 
+// ─── Validación ───
+
+const REQUIRED_SECTIONS = [
+  'conversation', 'humanizer', 'whatsapp', 'escalation',
+  'llm', 'softLimits', 'rag', 'extranjeria', 'timeGreeting'
+] as const
+
+function validateConfig(cfg: unknown): BotConfig {
+  if (!cfg || typeof cfg !== 'object') {
+    throw new Error('[CONFIG] bot.config.yaml está vacío o malformado')
+  }
+
+  const c = cfg as Record<string, unknown>
+
+  for (const section of REQUIRED_SECTIONS) {
+    if (!(section in c)) {
+      throw new Error(`[CONFIG] bot.config.yaml: falta la sección requerida "${section}"`)
+    }
+  }
+
+  return cfg as BotConfig
+}
+
 // ─── Carga ───
 
 function loadBotConfig(): BotConfig {
   const configPath = join(process.cwd(), 'bot.config.yaml')
   const raw = readFileSync(configPath, 'utf-8')
-  return yaml.load(raw) as BotConfig
+  const parsed = yaml.load(raw)
+  return validateConfig(parsed)
 }
 
 export const botConfig = loadBotConfig()
-export type { BotConfig, Range }

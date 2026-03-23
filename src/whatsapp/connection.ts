@@ -18,6 +18,7 @@ import { logger } from '../utils/logger.js'
 import { shouldProcessMessage } from '../server/sandbox/phone-filter.js'
 import { setQRCode, setConnectionStatus } from '../server/http.js'
 import { processMessage, isClosureMessage } from './handlers.js'
+import { MESSAGES } from './messages.js'
 import {
   calculateReadingDelay,
   calculateTypingDelay,
@@ -25,18 +26,23 @@ import {
   splitIntoNaturalMessages
 } from '../services/conversation/humanizer.js'
 import { addUserMessage, addBotMessage } from '../services/conversation/memory.js'
+import { sleep, pickRandom, randomBetween } from '../utils/helpers.js'
+import { botEvents } from '../utils/event-bus.js'
+import { recordMetric } from '../utils/metrics.js'
 
 let sock: WASocket | null = null
 
 // Debounce: espera a que el cliente deje de escribir antes de responder
 interface PendingMessage {
   timer: NodeJS.Timeout
-  body: string
-  msgKey: any
 }
 
 const pendingMessages = new Map<string, PendingMessage>()
+
+// Presencias suscritas: Set con límite para evitar crecimiento ilimitado
+const MAX_SUBSCRIBED_PRESENCES = 1000
 const subscribedPresences = new Set<string>()
+
 const DEBOUNCE_MS = botConfig.whatsapp.debounceMs
 
 const MEDIA_TYPES = [
@@ -52,6 +58,18 @@ const mediaResponses = [
 
 export function getSocket(): WASocket | null {
   return sock
+}
+
+export function getWhatsAppUser(): { id: string; name: string } | null {
+  if (!sock?.user) return null
+  return {
+    id: sock.user.id.replace('@s.whatsapp.net', '').replace(/:\d+/, ''),
+    name: sock.user.name || '',
+  }
+}
+
+export function getPendingMessageCount(): number {
+  return pendingMessages.size
 }
 
 export async function sendWhatsAppMessage(to: string, text: string): Promise<void> {
@@ -100,6 +118,8 @@ export async function connectToWhatsApp(): Promise<WASocket> {
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut
 
       logger.warn(`Conexión cerrada. Status: ${statusCode}. Reconectando: ${shouldReconnect}`)
+      const newStatus = shouldReconnect ? 'reconnecting' : 'logged_out'
+      botEvents.publish({ type: 'connection', status: newStatus, timestamp: Date.now() })
 
       if (shouldReconnect) {
         setConnectionStatus('reconnecting')
@@ -111,6 +131,7 @@ export async function connectToWhatsApp(): Promise<WASocket> {
     } else if (connection === 'open') {
       setQRCode(null)
       setConnectionStatus('connected')
+      botEvents.publish({ type: 'connection', status: 'connected', timestamp: Date.now() })
       logger.info('========================================')
       logger.info('✅ Conectado a WhatsApp correctamente!')
       logger.info('========================================')
@@ -160,6 +181,9 @@ export async function connectToWhatsApp(): Promise<WASocket> {
     if (!body) return
 
     logger.info(`[MENSAJE] ${from}: ${body}`)
+    recordMetric('message:received')
+    const incomingPhone = from.replace('@s.whatsapp.net', '')
+    botEvents.publish({ type: 'message:incoming', phone: incomingPhone, body, timestamp: Date.now() })
 
     // ─── Debounce: esperar a que pare de escribir ───
     const existing = pendingMessages.get(from)
@@ -173,7 +197,7 @@ export async function connectToWhatsApp(): Promise<WASocket> {
       await handleIncomingMessage(from, body, msg.key)
     }, DEBOUNCE_MS)
 
-    pendingMessages.set(from, { timer, body, msgKey: msg.key })
+    pendingMessages.set(from, { timer })
   })
 
   return sock
@@ -188,15 +212,19 @@ async function handleIncomingMessage(from: string, body: string, msgKey: any): P
   const phone = from.replace('@s.whatsapp.net', '')
 
   try {
-    // Suscribir presencia (una vez por contacto)
+    // Suscribir presencia (una vez por contacto, con límite de tamaño)
     if (!subscribedPresences.has(from) && sock) {
+      if (subscribedPresences.size >= MAX_SUBSCRIBED_PRESENCES) {
+        subscribedPresences.clear()
+        logger.debug('[PRESENCE] Reset subscribedPresences (límite alcanzado)')
+      }
       try {
         await sock.presenceSubscribe(from)
         subscribedPresences.add(from)
       } catch { /* no crítico */ }
     }
 
-    // ─── Closure: reaccionar con emoji y no responder ───
+    // ─── Closure: reaccionar con emoji y no responder con texto ───
     if (isClosureMessage(body)) {
       addUserMessage(phone, body)
       addBotMessage(phone, '👍')
@@ -219,7 +247,7 @@ async function handleIncomingMessage(from: string, body: string, msgKey: any): P
       sleep(readDelay)
     ])
 
-    // Re-split por seguridad (existingClient y escalation no se splitean en handlers)
+    // Splitear todas las respuestas (el handler devuelve texto raw)
     const allMessages: { text: string; flow: string }[] = []
     for (const response of responses) {
       const parts = splitIntoNaturalMessages(response.text)
@@ -228,21 +256,16 @@ async function handleIncomingMessage(from: string, body: string, msgKey: any): P
 
     // ─── Enviar con typing indicators (composing → pause → composing) ───
     for (let i = 0; i < allMessages.length; i++) {
-      const text = allMessages[i].text
+      const { text, flow } = allMessages[i]
 
-      // Typing indicator ON
       await startTyping(from)
-
-      // Delay de escritura
       await sleep(calculateTypingDelay(text))
-
-      // Enviar mensaje
       await sendWhatsAppMessage(from, text)
-
-      // Typing indicator OFF
       await stopTyping(from)
 
-      // Pausa entre mensajes (gap sin typing → parece que piensa y vuelve a escribir)
+      recordMetric('message:sent')
+      botEvents.publish({ type: 'message:outgoing', phone, text, flow, timestamp: Date.now() })
+
       if (i < allMessages.length - 1) {
         const nextLen = allMessages[i + 1].text.length
         const pause = pauseBetweenMessages(i, allMessages.length, nextLen)
@@ -252,6 +275,17 @@ async function handleIncomingMessage(from: string, body: string, msgKey: any): P
     }
   } catch (error) {
     logger.error('Error procesando mensaje:', error)
+    recordMetric('error')
+    botEvents.publish({
+      type: 'error',
+      context: `handleIncomingMessage:${phone}`,
+      error: String(error),
+      timestamp: Date.now(),
+    })
+    // Notificar al usuario que algo ha fallado para que no se quede sin respuesta
+    try {
+      await sendWhatsAppMessage(from, MESSAGES.error)
+    } catch { /* si ni esto funciona, ya no hay más que hacer */ }
   }
 }
 
@@ -276,16 +310,4 @@ function getClosureEmoji(text: string): string {
   if (/gracia/.test(lower)) return pickRandom(['🙏', '😊'])
   if (/perfect|genial|estupendo|guay/.test(lower)) return pickRandom(['😊', '👌'])
   return '👍'
-}
-
-function pickRandom<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)]
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-function randomBetween(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min
 }

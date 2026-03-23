@@ -6,19 +6,20 @@ Fuentes de conocimiento del bot: RAG, LLM y catálogo de servicios.
 
 ```
 knowledgebase/
-├── index.ts                    # Re-exporta todos los servicios
+├── index.ts                    # Re-exporta los servicios activos
 ├── llm/
-│   ├── llm.service.ts          # Orquestador principal
+│   ├── llm.service.ts          # Orquestador principal (Groq → OpenAI → local)
 │   ├── providers.ts            # Clientes Groq/OpenAI
-│   ├── local.ts                # Respuestas sin IA
+│   ├── local.ts                # Respuestas sin IA (fallback)
 │   ├── prompt-builder.ts       # Construcción del system prompt
 │   ├── rag-cache.ts            # Caché inteligente de RAG
-│   └── prompts/                # External prompt templates
-│       ├── system.txt
+│   └── prompts/                # Plantillas de prompts
+│       ├── system.txt          # Persona del abogado + reglas
+│       ├── legal-knowledge.txt # Conocimiento legal Seguridad Social
 │       ├── video-instructions.txt
 │       └── services-context.txt
 ├── rag/
-│   ├── rag.service.ts          # Búsqueda semántica
+│   ├── rag.service.ts          # Búsqueda semántica en Pinecone
 │   ├── rag.config.ts           # Configuración de Pinecone
 │   ├── tiktok/
 │   │   ├── chunking.ts         # Procesamiento de transcripciones
@@ -33,19 +34,22 @@ knowledgebase/
 
 ## LLM (`llm/`)
 
-Sistema modular para generación de respuestas con IA.
-
-### `llm.service.ts` - Orquestador
+### `llm.service.ts` — Orquestador
 
 Función principal que coordina proveedores, RAG y memoria.
+Usa un helper `tryProvider()` interno para evitar duplicar el flujo Groq/OpenAI.
 
 | Función | Descripción |
 |---------|-------------|
 | `getAIResponse(message, phone?, options?)` | Genera respuesta con IA |
 
-### `providers.ts` - Proveedores
+**Flujo:**
+1. Guarda `addUserMessage` en memoria
+2. Obtiene contexto RAG (con caché inteligente)
+3. Intenta Groq → OpenAI → sistema local
+4. Guarda `addBotMessage` y devuelve la respuesta limpia de markdown
 
-Inicialización y llamadas a APIs de LLM.
+### `providers.ts` — Proveedores
 
 | Proveedor | Modelo | Prioridad |
 |-----------|--------|-----------|
@@ -56,9 +60,8 @@ Inicialización y llamadas a APIs de LLM.
 |---------|-------------|
 | `generateWithGroq(messages)` | Llama a Groq API |
 | `generateWithOpenAI(messages)` | Llama a OpenAI API |
-| `getLLMStatus()` | Estado del proveedor activo |
 
-### `local.ts` - Sistema sin IA
+### `local.ts` — Sistema sin IA
 
 Fallback cuando no hay API keys. Detecta intención y responde:
 
@@ -70,41 +73,47 @@ Fallback cuando no hay API keys. Detecta intención y responde:
 | `contacto` | Web y horario |
 | `consulta` | Orientación basada en servicios |
 
-### `prompt-builder.ts` - System Prompt Builder
+### `prompt-builder.ts` — System Prompt Builder
 
-Builds system prompts from external template files in `llm/prompts/`.
+Ensambla el system prompt desde plantillas externas con inyección condicional de conocimiento.
 
-| Function | Description |
-|----------|-------------|
-| `buildSystemPrompt(message, phone?, ragContext?)` | Full prompt with RAG and services |
-| `clearPromptCache()` | Reload prompts from disk (dev) |
+| Función | Descripción |
+|---------|-------------|
+| `buildSystemPrompt(message, phone?, ragContext?)` | Prompt completo con RAG, servicios y contexto |
 
-**Prompt files:**
-- `system.txt` - Main lawyer persona prompt
-- `video-instructions.txt` - TikTok video mention guidelines
-- `services-context.txt` - Services list template
+**Inyección selectiva de `legal-knowledge.txt`:**
+Solo se inyectan las secciones relevantes al mensaje detectado, reduciendo el uso de tokens:
 
-**Interpolation:** `{{VAR}}` syntax (e.g. `{{BOOKING_URL}}`, `{{SERVICES_LIST}}`)
+| Sección | Keywords que la activan |
+|---------|------------------------|
+| JUBILACIÓN ORDINARIA | jubila, pension, cotiza... |
+| JUBILACIÓN ANTICIPADA | mismo que ordinaria |
+| TOTALIZACIÓN INTERNACIONALES | jubilación + convenio, extranjero |
+| JUBILACIÓN CON DISCAPACIDAD | discapacidad, minusvalia, 45%, 65% |
+| SECTORES ESPECIALES | minero, marinero, carbon |
+| CLASES PASIVAS | clases pasivas, funcionario |
+| INCAPACIDAD PERMANENTE | incapacidad, invalidez, baja, inss... |
+| LOS 545 DÍAS | 545, baja, pago directo... |
+| SUBSIDIO MAYORES 52 | subsidio, mayores 52, paro |
+| ESTRATEGIA DE VENTA | siempre incluida con cualquier tema de SS |
 
-### `rag-cache.ts` - Caché RAG
+**Soft limits:** `buildSoftLimitHint` inyecta instrucciones de venta progresivas
+según `getUserTotalChars` y `getUserMessageCount`, diferenciando por tipo de caso:
+- Jubilación → estudio personalizado (120€)
+- Incapacidad → consulta (69€) / suscripción mensual
+- General → consulta estándar (69€)
+
+**Zona horaria:** usa `Intl.DateTimeFormat` para la hora de Madrid (fiable en todos los entornos).
+
+### `rag-cache.ts` — Caché RAG
 
 Optimiza búsquedas RAG para preguntas de seguimiento.
 
 | Función | Descripción |
 |---------|-------------|
-| `isFollowUpQuery(query)` | Detecta si es pregunta de seguimiento |
 | `getRAGContextWithCache(message, phone?)` | Contexto RAG con caché inteligente |
 
-**Parámetros LLM:**
-```typescript
-{
-  max_tokens: 600,
-  temperature: 0.85,
-  top_p: 0.92,
-  presence_penalty: 0.3,
-  frequency_penalty: 0.3
-}
-```
+**Para seguimientos** (`isFollowUpQuery`): usa `topK=3` (reducido) en lugar del default de `.env`, ahorrando latencia y tokens.
 
 ---
 
@@ -137,7 +146,7 @@ interface RAGResult {
 
 | Función | Descripción |
 |---------|-------------|
-| `getRAGContext(query)` | Obtiene contexto RAG completo |
+| `getRAGContext(query, topK?)` | Obtiene contexto RAG completo (topK opcional) |
 | `retrieveRelevantChunks(query, topK?, minSimilarity?)` | Busca chunks en Pinecone |
 | `formatContextForLLM(chunks)` | Formatea contexto para prompt |
 | `formatVideosForLLM(videos)` | Formatea lista de videos |
@@ -165,24 +174,11 @@ Procesa transcripciones de videos en chunks para indexar en Pinecone.
 | Medio | 600-1500 | 2-3 chunks |
 | Largo | > 1500 | Chunks de ~400 tokens con overlap de 50 |
 
-**Funciones:**
-
-| Función | Descripción |
-|---------|-------------|
-| `chunkVideo(video)` | Divide un video en chunks |
-| `chunkVideos(videos)` | Procesa múltiples videos en batch |
-| `getChunkingStats(chunks)` | Estadísticas de chunking |
-
-**Detección automática de topics:**
-jubilacion, autonomos, incapacidad, desempleo, cotizacion, seguridad_social, viudedad, complementos, ere, extranjeria
-
 ---
 
 ## RAG Config (`rag/rag.config.ts`)
 
 Configuración y conexión con Pinecone.
-
-**Funciones:**
 
 | Función | Descripción |
 |---------|-------------|
@@ -198,18 +194,6 @@ Configuración y conexión con Pinecone.
 ## Services Catalog (`services-catalog/catalog.data.ts`)
 
 Catálogo de servicios legales del despacho.
-
-**Categorías:**
-- Derecho Civil
-- Derecho de Familia
-- Derecho Laboral
-- Derecho Penal
-- Derecho Mercantil
-- Derecho Administrativo
-- Derecho Inmobiliario
-- Extranjería
-- Derecho del Consumidor
-- Herencias y Sucesiones
 
 **Interface:**
 ```typescript
@@ -227,21 +211,11 @@ interface Servicio {
 
 | Función | Descripción |
 |---------|-------------|
-| `buscarServicios(consulta)` | Busca por keywords (max 5 resultados) |
-| `obtenerServiciosPorCategoria(cat)` | Servicios de una categoría |
-| `obtenerServicioPorId(id)` | Servicio por ID |
+| `buscarServicios(consulta)` | Busca por keywords (max 5 resultados). Devuelve `[]` si consulta vacía |
 
 ---
 
 ## Scripts de RAG
-
-### Procesamiento de datos (`rag/data/tiktok/scripts/`)
-
-| Script | Descripción |
-|--------|-------------|
-| `clean-tiktok-data.ts` | Limpia CSV de transcripciones |
-| `process-chunks.ts` | Divide transcripciones en chunks |
-| `analyze-transcripts.ts` | Análisis de transcripciones |
 
 ### Indexación (`rag/scripts/`)
 
@@ -264,45 +238,25 @@ Usuario envía mensaje
         ▼
 ┌───────────────────┐
 │  RAG: Buscar      │
-│  chunks relevantes│
+│  chunks relevantes│   ← topK reducido si es follow-up
 │  en Pinecone      │
 └─────────┬─────────┘
           │
           ▼
 ┌───────────────────┐
-│  Servicios:       │
-│  Buscar servicios │
-│  por keywords     │
+│  Prompt Builder:  │
+│  system.txt +     │   ← legal-knowledge.txt (secciones selectivas)
+│  servicios +      │   ← soft limit hint (por tipo de caso)
+│  conversación     │
 └─────────┬─────────┘
           │
           ▼
 ┌───────────────────┐
-│  LLM: Generar     │
-│  respuesta con    │
-│  contexto         │
+│  LLM:             │
+│  Groq → OpenAI    │   ← mismo flujo via tryProvider()
+│  → Sistema local  │
 └─────────┬─────────┘
           │
           ▼
-    Respuesta
-```
-
----
-
-## Uso típico
-
-```typescript
-import { 
-  getAIResponse,
-  getRAGContext,
-  buscarServicios 
-} from './services/knowledgebase/index.js'
-
-// Obtener respuesta completa (RAG + LLM)
-const response = await getAIResponse(userMessage, phone, { debugMode: false })
-
-// Solo RAG
-const ragContext = await getRAGContext(userMessage)
-
-// Solo catálogo
-const servicios = buscarServicios('divorcio custodia')
+    Respuesta (sin markdown)
 ```

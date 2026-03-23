@@ -71,14 +71,14 @@ async function toggleDebugMode() {
   scrollToBottom();
 }
 
-// Limpiar chat
+// Nueva conversación (resetea historial visual + memoria del bot)
 async function clearChatHistory() {
   await fetch('/api/conversation/clear', { method: 'POST' });
   messagesContainer.innerHTML = '';
   
   const systemMsg = document.createElement('div');
-  systemMsg.style.cssText = 'text-align: center; padding: 10px; color: #8696a0; font-size: 12px;';
-  systemMsg.textContent = '🗑️ Chat limpiado';
+  systemMsg.style.cssText = 'text-align: center; padding: 10px; color: #25D366; font-size: 12px; font-weight: 600;';
+  systemMsg.textContent = '🔄 Nueva conversación — como si fueras un cliente nuevo';
   messagesContainer.appendChild(systemMsg);
 }
 
