@@ -1,29 +1,47 @@
 /**
- * Handler del Sandbox
- * Procesa mensajes simulados sin enviar por WhatsApp real
+ * Sandbox handler — thin adapter that calls the injected MessageRouter
+ * and shapes the result for the sandbox UI (per-bubble messages).
  */
 
-import { processSandboxMessage, BotResponse } from '../whatsapp/handlers.js'
+import type { MessageRouter } from '../../pipeline/router.contract.js'
+import { splitIntoNaturalMessages } from '../../conversation/humanizer/index.js'
 import { addToConversation } from './index.js'
 
-/**
- * Maneja un mensaje simulado del sandbox
- * @param message - Mensaje del usuario
- * @param isExistingClient - Si está en modo "contacto guardado"
- * @param debugMode - Si se deben mostrar marcas de debug con fuentes
- */
-export async function handleSandboxMessage(
+export interface BotResponse {
+  text: string
+  flow: string
+}
+
+export async function routeSandboxMessage(
+  router: MessageRouter,
   message: string,
-  isExistingClient: boolean,
   debugMode: boolean
 ): Promise<BotResponse[]> {
-  // Procesar mensaje usando el handler compartido con modo debug
-  const responses = await processSandboxMessage(message, isExistingClient, debugMode)
+  const response = await router.route({
+    from: 'sandbox_user@s.whatsapp.net',
+    body: message,
+    meta: { debugMode },
+  })
 
-  // Guardar respuestas en el historial del sandbox
-  for (const response of responses) {
-    addToConversation('bot', response.text, response.flow)
+  let bubbles: BotResponse[] = []
+
+  if (response.silent) {
+    return []
   }
 
-  return responses
+  if (response.reaction) {
+    // Sandbox UI has no native reactions — render the emoji as a bubble.
+    bubbles = [{ text: response.reaction, flow: response.flow }]
+  } else if (response.messages) {
+    for (const text of response.messages) {
+      for (const part of splitIntoNaturalMessages(text)) {
+        bubbles.push({ text: part, flow: response.flow })
+      }
+    }
+  }
+
+  for (const b of bubbles) {
+    addToConversation('bot', b.text, b.flow)
+  }
+  return bubbles
 }

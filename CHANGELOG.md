@@ -2,6 +2,39 @@
 
 All notable changes to the whatsappbot project. Format: phase → PR → list.
 
+## Phase 2 — Pipeline canónico
+
+### PR 2.1 — Router seam (single source of truth for §3 flows)
+
+**Added**
+- `src/pipeline/router.ts` — `DefaultMessageRouter` implementing `MessageRouter`. Encapsulates the closure → existing_client → extranjeria → escalation → ai dispatch and owns the per-flow metric + escalation event emission.
+- `src/pipeline/handlers/closure.ts` — `isClosureMessage` + `getClosureEmoji` (extracted from `channels/whatsapp/handlers.ts`).
+- `src/pipeline/handlers/extranjeria.ts` — `isExtranjeriaQuery` (extracted; still hardcoded, dedup with yaml lands in PR 2.2).
+- `meta?: Record<string, unknown>` field on `MessageInput` (router contract) to carry channel hints (e.g. sandbox `debugMode`).
+
+**Moved**
+- `src/channels/whatsapp/messages.ts` → `src/pipeline/templates.ts` (router-owned templates; the channel is no longer the source of truth for response copy).
+
+**Removed**
+- `src/channels/whatsapp/handlers.ts` — `processMessage` and `processSandboxMessage` are gone; their logic now lives in the router.
+
+**Modified**
+- `src/channels/whatsapp/connection.ts` — `connectToWhatsApp(router)` now takes a `MessageRouter`. The dispatch chain inside `handleIncomingMessage` is replaced by a single `router.route()` call followed by channel-specific apply logic (reaction vs. text + humanizer split + typing indicators). A closure-peek preserves today's timing exactly: closure path skips the reading delay (uses only `closureReactionDelay`).
+- `src/channels/sandbox/index.ts` — exports `sandboxCRM: CRMClient` (reads the UI toggle) and `setRouter(router)` instead of `setMessageHandler(handler)`. `/api/simulate` calls `routeSandboxMessage(router, ...)`.
+- `src/channels/sandbox/handler.ts` — replaced with thin adapter `routeSandboxMessage(router, message, debugMode)` that splits the router's text response into per-bubble entries for the UI.
+- `src/index.ts` — DI wiring: builds a `productionRouter` with `defaultCRMClient` (always), and in sandbox mode a separate `sandboxRouter` with `sandboxCRM`. The WhatsApp channel uses the production router; the sandbox UI uses the sandbox router. The two router instances share the same store + notifier.
+
+**Behavior**
+- Dispatch logic is preserved exactly, including the closure-first ordering bug (spec says #5; current is #1). This is fixed in PR 2.2.
+- Sandbox now ALSO runs the closure flow (today's sandbox skipped it). The emoji is rendered as a chat bubble in the sandbox UI since the UI has no native reactions.
+- Metric names unchanged (`cliente_existente`, `extranjeria_redirect`, `escalado_*`, `ia_response`). Renaming to spec flow keys lands in PR 2.2.
+- Build clean. Runtime smoke: all 4 non-AI router branches return the expected `RoutedResponse`, full boot path (`node dist/index.js`) reaches Fastify listen with both router instances wired.
+
+**Notes / deferred**
+- Extranjería keyword duplication (yaml vs. handler) and structural ignore as a router flow remain — PR 2.2 / Phase 3.
+- Media (`MEDIA_TYPES`) is still a channel-only branch; folding into router is deferred.
+- Tests still deferred to Phase 10.
+
 ## Phase 1 — Cimientos
 
 ### PR 1.3 — Folder reshuffle to §4.2 + `/health` split

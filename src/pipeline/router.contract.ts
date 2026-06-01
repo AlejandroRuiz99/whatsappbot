@@ -33,6 +33,8 @@ export interface MessageInput {
   mediaType?: 'audio' | 'image' | 'video' | 'document' | 'sticker'
   /** Optional WhatsApp pushName for personalization / escalation. */
   pushName?: string
+  /** Channel-specific hints (e.g. sandbox `debugMode`). */
+  meta?: Record<string, unknown>
 }
 
 export interface RoutedResponse {

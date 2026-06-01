@@ -3,8 +3,8 @@
  * Basados en los patrones reales de comunicación del despacho (119 chats analizados)
  */
 
-import { config } from '../../config/env.js'
-import { pickRandom } from '../../utils/helpers.js'
+import { config } from '../config/env.js'
+import { pickRandom } from '../utils/helpers.js'
 
 const existingClientVariants = [
   `Hola, qué tal! Soy Inmaculada de Compromiso Legal. Para clientes tenemos un canal en Telegram que es más directo y cómodo para gestionar consultas\n\nLe dejo el enlace: ${config.TELEGRAM_LINK}`,

@@ -1,13 +1,14 @@
 /**
- * Conexión con WhatsApp usando Baileys
- * Gestiona la conexión, debounce de mensajes, typing indicators y envío humanizado
+ * WhatsApp channel — Baileys connection, debounce, presence, humanized send.
+ * Thin adapter: translates channel events to MessageInput, delegates to
+ * the injected MessageRouter, applies the RoutedResponse.
  */
 
 import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
   WASocket,
-  fetchLatestBaileysVersion
+  fetchLatestBaileysVersion,
 } from 'baileys'
 import { Boom } from '@hapi/boom'
 import * as QRCode from 'qrcode'
@@ -17,39 +18,41 @@ import { botConfig } from '../../config/bot-config.js'
 import { logger } from '../../observability/logger.js'
 import { shouldProcessMessage } from '../sandbox/phone-filter.js'
 import { setQRCode, setConnectionStatus } from '../../server/http.js'
-import { processMessage, isClosureMessage } from './handlers.js'
-import { MESSAGES } from './messages.js'
+import { MESSAGES } from '../../pipeline/templates.js'
+import { isClosureMessage } from '../../pipeline/handlers/closure.js'
+import type { MessageRouter } from '../../pipeline/router.contract.js'
 import {
   calculateReadingDelay,
   calculateTypingDelay,
   pauseBetweenMessages,
-  splitIntoNaturalMessages
+  splitIntoNaturalMessages,
 } from '../../conversation/humanizer/index.js'
-import { addUserMessage, addBotMessage } from '../../conversation/store/memory.js'
 import { sleep, pickRandom, randomBetween } from '../../utils/helpers.js'
 import { botEvents } from '../../observability/event-bus.js'
 import { recordMetric } from '../../observability/metrics.js'
 
 let sock: WASocket | null = null
 
-// Debounce: espera a que el cliente deje de escribir antes de responder
 interface PendingMessage {
   timer: NodeJS.Timeout
 }
-
 const pendingMessages = new Map<string, PendingMessage>()
 
-// Presencias suscritas: Set con límite para evitar crecimiento ilimitado
 const MAX_SUBSCRIBED_PRESENCES = 1000
 const subscribedPresences = new Set<string>()
 
 const DEBOUNCE_MS = botConfig.whatsapp.debounceMs
 
 const MEDIA_TYPES = [
-  'imageMessage', 'documentMessage', 'videoMessage',
-  'audioMessage', 'stickerMessage'
+  'imageMessage',
+  'documentMessage',
+  'videoMessage',
+  'audioMessage',
+  'stickerMessage',
 ]
 
+// Media stays at the channel for now (not yet a §3 router flow).
+// Folding into the router is deferred to a later phase.
 const mediaResponses = [
   'Lo he recibido. Para poder revisarlo bien tendríamos que verlo en consulta. ¿Quiere que le pase el enlace para agendar cita?',
   'Lo veo, pero para analizar documentos necesitaría hacerlo en consulta. Si le interesa podemos agendar una',
@@ -79,7 +82,7 @@ export async function sendWhatsAppMessage(to: string, text: string): Promise<voi
   await sock.sendMessage(to, { text })
 }
 
-export async function connectToWhatsApp(): Promise<WASocket> {
+export async function connectToWhatsApp(router: MessageRouter): Promise<WASocket> {
   const { state, saveCreds } = await useMultiFileAuthState('auth_info')
   const { version, isLatest } = await fetchLatestBaileysVersion()
 
@@ -123,7 +126,7 @@ export async function connectToWhatsApp(): Promise<WASocket> {
 
       if (shouldReconnect) {
         setConnectionStatus('reconnecting')
-        setTimeout(connectToWhatsApp, botConfig.whatsapp.reconnectDelayMs)
+        setTimeout(() => connectToWhatsApp(router), botConfig.whatsapp.reconnectDelayMs)
       } else {
         setConnectionStatus('logged_out')
         logger.info('Sesión cerrada. Elimina la carpeta auth_info y reinicia.')
@@ -140,7 +143,6 @@ export async function connectToWhatsApp(): Promise<WASocket> {
 
   sock.ev.on('creds.update', saveCreds)
 
-  // ─── Handler de mensajes entrantes ───
   sock.ev.on('messages.upsert', async (m) => {
     const msg = m.messages[0]
     if (!msg.message || msg.key.fromMe) return
@@ -154,7 +156,6 @@ export async function connectToWhatsApp(): Promise<WASocket> {
       return
     }
 
-    // ─── Media: acusar recibo y derivar a cita ───
     if (MEDIA_TYPES.includes(messageType)) {
       logger.info(`[MENSAJE] ${from}: [${messageType}]`)
       try {
@@ -171,30 +172,36 @@ export async function connectToWhatsApp(): Promise<WASocket> {
       return
     }
 
-    // ─── Extraer texto ───
-    const body = messageType === 'conversation'
-      ? msg.message.conversation
-      : messageType === 'extendedTextMessage'
-        ? msg.message.extendedTextMessage?.text
-        : ''
+    const body =
+      messageType === 'conversation'
+        ? msg.message.conversation
+        : messageType === 'extendedTextMessage'
+          ? msg.message.extendedTextMessage?.text
+          : ''
 
     if (!body) return
 
     logger.info(`[MENSAJE] ${from}: ${body}`)
     recordMetric('message:received')
     const incomingPhone = from.replace('@s.whatsapp.net', '')
-    botEvents.publish({ type: 'message:incoming', phone: incomingPhone, body, timestamp: Date.now() })
+    botEvents.publish({
+      type: 'message:incoming',
+      phone: incomingPhone,
+      body,
+      timestamp: Date.now(),
+    })
 
-    // ─── Debounce: esperar a que pare de escribir ───
     const existing = pendingMessages.get(from)
     if (existing) {
       clearTimeout(existing.timer)
       logger.debug(`[DEBOUNCE] ${from}: mensaje anterior cancelado, procesando el nuevo`)
     }
 
+    const pushName = (msg as any).pushName as string | undefined
+
     const timer = setTimeout(async () => {
       pendingMessages.delete(from)
-      await handleIncomingMessage(from, body, msg.key)
+      await handleIncomingMessage(router, from, body, pushName, msg.key)
     }, DEBOUNCE_MS)
 
     pendingMessages.set(from, { timer })
@@ -203,16 +210,16 @@ export async function connectToWhatsApp(): Promise<WASocket> {
   return sock
 }
 
-/**
- * Procesa un mensaje tras el debounce.
- * Gestiona closure detection, reading delay, LLM call,
- * typing indicators y envío humanizado.
- */
-async function handleIncomingMessage(from: string, body: string, msgKey: any): Promise<void> {
+async function handleIncomingMessage(
+  router: MessageRouter,
+  from: string,
+  body: string,
+  pushName: string | undefined,
+  msgKey: any
+): Promise<void> {
   const phone = from.replace('@s.whatsapp.net', '')
 
   try {
-    // Suscribir presencia (una vez por contacto, con límite de tamaño)
     if (!subscribedPresences.has(from) && sock) {
       if (subscribedPresences.size >= MAX_SUBSCRIBED_PRESENCES) {
         subscribedPresences.clear()
@@ -221,40 +228,47 @@ async function handleIncomingMessage(from: string, body: string, msgKey: any): P
       try {
         await sock.presenceSubscribe(from)
         subscribedPresences.add(from)
-      } catch { /* no crítico */ }
+      } catch {
+        /* no crítico */
+      }
     }
 
-    // ─── Closure: reaccionar con emoji y no responder con texto ───
+    // Closure peek to preserve today's timing: closure flow uses only
+    // closureReactionDelay (no readingDelay). Router still decides flow;
+    // both call the same `isClosureMessage` predicate.
     if (isClosureMessage(body)) {
-      addUserMessage(phone, body)
-      addBotMessage(phone, '👍')
-      const crd = botConfig.whatsapp.closureReactionDelay
-      await sleep(randomBetween(crd[0], crd[1]))
-      try {
-        const emoji = getClosureEmoji(body)
-        await sock?.sendMessage(from, { react: { text: emoji, key: msgKey } })
-        logger.info(`[HANDLER] ${phone} → Cierre: reacción ${emoji}`)
-      } catch (error) {
-        logger.error('Error enviando reacción:', error)
+      const response = await router.route({ from, body, pushName })
+      if (response.reaction) {
+        const crd = botConfig.whatsapp.closureReactionDelay
+        await sleep(randomBetween(crd[0], crd[1]))
+        try {
+          await sock?.sendMessage(from, { react: { text: response.reaction, key: msgKey } })
+          logger.info(`[CHANNEL] ${phone} → reaction ${response.reaction} (flow: ${response.flow})`)
+        } catch (error) {
+          logger.error('Error enviando reacción:', error)
+        }
       }
       return
     }
 
-    // ─── Procesar mensaje y reading delay en paralelo ───
+    // Non-closure: parallelize router (may include LLM call) with reading delay.
     const readDelay = calculateReadingDelay(body.length)
-    const [responses] = await Promise.all([
-      processMessage(from, body),
-      sleep(readDelay)
+    const [response] = await Promise.all([
+      router.route({ from, body, pushName }),
+      sleep(readDelay),
     ])
 
-    // Splitear todas las respuestas (el handler devuelve texto raw)
-    const allMessages: { text: string; flow: string }[] = []
-    for (const response of responses) {
-      const parts = splitIntoNaturalMessages(response.text)
-      parts.forEach(part => allMessages.push({ text: part, flow: response.flow }))
+    if (response.silent || !response.messages || response.messages.length === 0) {
+      return
     }
 
-    // ─── Enviar con typing indicators (composing → pause → composing) ───
+    const allMessages: { text: string; flow: string }[] = []
+    for (const text of response.messages) {
+      for (const part of splitIntoNaturalMessages(text)) {
+        allMessages.push({ text: part, flow: response.flow })
+      }
+    }
+
     for (let i = 0; i < allMessages.length; i++) {
       const { text, flow } = allMessages[i]
 
@@ -264,12 +278,20 @@ async function handleIncomingMessage(from: string, body: string, msgKey: any): P
       await stopTyping(from)
 
       recordMetric('message:sent')
-      botEvents.publish({ type: 'message:outgoing', phone, text, flow, timestamp: Date.now() })
+      botEvents.publish({
+        type: 'message:outgoing',
+        phone,
+        text,
+        flow,
+        timestamp: Date.now(),
+      })
 
       if (i < allMessages.length - 1) {
         const nextLen = allMessages[i + 1].text.length
         const pause = pauseBetweenMessages(i, allMessages.length, nextLen)
-        logger.debug(`[HUMANIZER] Pausa entre mensajes: ${Math.round(pause / 1000)}s (siguiente: ${nextLen} chars)`)
+        logger.debug(
+          `[HUMANIZER] Pausa entre mensajes: ${Math.round(pause / 1000)}s (siguiente: ${nextLen} chars)`
+        )
         await sleep(pause)
       }
     }
@@ -282,32 +304,26 @@ async function handleIncomingMessage(from: string, body: string, msgKey: any): P
       error: String(error),
       timestamp: Date.now(),
     })
-    // Notificar al usuario que algo ha fallado para que no se quede sin respuesta
     try {
       await sendWhatsAppMessage(from, MESSAGES.error)
-    } catch { /* si ni esto funciona, ya no hay más que hacer */ }
+    } catch {
+      /* nada */
+    }
   }
 }
-
-// ─── Typing indicator helpers ───
 
 async function startTyping(jid: string): Promise<void> {
   try {
     await sock?.sendPresenceUpdate('composing', jid)
-  } catch { /* no crítico */ }
+  } catch {
+    /* no crítico */
+  }
 }
 
 async function stopTyping(jid: string): Promise<void> {
   try {
     await sock?.sendPresenceUpdate('paused', jid)
-  } catch { /* no crítico */ }
-}
-
-// ─── Utilidades ───
-
-function getClosureEmoji(text: string): string {
-  const lower = text.toLowerCase()
-  if (/gracia/.test(lower)) return pickRandom(['🙏', '😊'])
-  if (/perfect|genial|estupendo|guay/.test(lower)) return pickRandom(['😊', '👌'])
-  return '👍'
+  } catch {
+    /* no crítico */
+  }
 }

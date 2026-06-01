@@ -6,15 +6,31 @@ import * as QRCode from 'qrcode'
 import { logger } from '../../observability/logger.js'
 import { getQRCode, getConnectionStatus } from '../../server/http.js'
 import { deleteConversation } from '../../conversation/store/memory.js'
+import type { CRMClient } from '../../conversation/classifier/contract.js'
+import type { MessageRouter } from '../../pipeline/router.contract.js'
+import { routeSandboxMessage } from './handler.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
-// Estado específico del sandbox
+// Sandbox-only state (UI-controlled toggles)
 let sandboxIsExistingClient = false
 let sandboxDebugMode = false
 
-// Historial de conversación para la UI
+// Router injected by src/index.ts at boot
+let router: MessageRouter | null = null
+export function setRouter(r: MessageRouter): void {
+  router = r
+}
+
+/**
+ * CRM impl backed by the sandbox UI toggle. Wired into the sandbox-mode
+ * router instance so the test UI can flip "is existing client" at runtime.
+ */
+export const sandboxCRM: CRMClient = {
+  isExistingClient: async () => sandboxIsExistingClient,
+}
+
 const conversationHistory: Array<{
   id: string
   from: 'user' | 'bot'
@@ -23,29 +39,20 @@ const conversationHistory: Array<{
   flow?: string
 }> = []
 
-// Callback para procesar mensajes simulados
-let onSimulatedMessage: ((message: string, isExistingClient: boolean, debugMode: boolean) => Promise<Array<{ text: string; flow: string }>>) | null = null
-
-// ============= Funciones del sandbox =============
-
 export function addToConversation(from: 'user' | 'bot', message: string, flow?: string) {
   conversationHistory.push({
     id: Date.now().toString(),
     from,
     message,
     timestamp: new Date().toISOString(),
-    flow
+    flow,
   })
   if (conversationHistory.length > 100) {
     conversationHistory.shift()
   }
 }
 
-export function setMessageHandler(handler: (message: string, isExistingClient: boolean, debugMode: boolean) => Promise<Array<{ text: string; flow: string }>>) {
-  onSimulatedMessage = handler
-}
-
-// ============= Helpers para templates =============
+// ─── Template helpers ───
 
 function loadTemplate(name: string): string {
   const templatePath = join(__dirname, `${name}.html`)
@@ -56,12 +63,12 @@ function renderQRPage(): string {
   const template = loadTemplate('qr')
   const currentQR = getQRCode()
   const connectionStatus = getConnectionStatus()
-  
+
   let content = ''
   let statusClass = ''
   let statusText = ''
   let refreshMeta = '5'
-  
+
   if (connectionStatus === 'connected') {
     refreshMeta = '0;url=/sandbox'
     content = `
@@ -82,13 +89,20 @@ function renderQRPage(): string {
       <p>Generando código QR...</p>
       <p style="margin-top: 10px; color: #aaa;">Esta página se actualiza automáticamente</p>
     `
-    statusClass = connectionStatus === 'connecting' || connectionStatus === 'reconnecting' ? 'connecting' : 'disconnected'
-    statusText = connectionStatus === 'connecting' ? '🟡 Conectando...' :
-                 connectionStatus === 'reconnecting' ? '🟡 Reconectando...' :
-                 connectionStatus === 'logged_out' ? '🔴 Sesión cerrada' :
-                 '🟡 Esperando QR...'
+    statusClass =
+      connectionStatus === 'connecting' || connectionStatus === 'reconnecting'
+        ? 'connecting'
+        : 'disconnected'
+    statusText =
+      connectionStatus === 'connecting'
+        ? '🟡 Conectando...'
+        : connectionStatus === 'reconnecting'
+          ? '🟡 Reconectando...'
+          : connectionStatus === 'logged_out'
+            ? '🔴 Sesión cerrada'
+            : '🟡 Esperando QR...'
   }
-  
+
   return template
     .replace('{{REFRESH_META}}', refreshMeta)
     .replace('{{CONTENT}}', content)
@@ -96,10 +110,9 @@ function renderQRPage(): string {
     .replace('{{STATUS_TEXT}}', statusText)
 }
 
-// ============= Registro de rutas =============
+// ─── Route registration ───
 
 export async function registerSandboxRoutes(fastify: FastifyInstance) {
-  // Archivos estáticos
   fastify.get('/sandbox/sandbox.js', async (request, reply) => {
     try {
       const content = readFileSync(join(__dirname, 'sandbox.js'), 'utf8')
@@ -109,7 +122,7 @@ export async function registerSandboxRoutes(fastify: FastifyInstance) {
       reply.status(404).send('File not found')
     }
   })
-  
+
   fastify.get('/sandbox/styles.css', async (request, reply) => {
     try {
       const content = readFileSync(join(__dirname, 'styles.css'), 'utf8')
@@ -119,13 +132,12 @@ export async function registerSandboxRoutes(fastify: FastifyInstance) {
       reply.status(404).send('File not found')
     }
   })
-  
-  // Página principal - QR
+
   fastify.get('/', async (request, reply) => {
     let html = renderQRPage()
     const currentQR = getQRCode()
     const connectionStatus = getConnectionStatus()
-    
+
     if (currentQR && connectionStatus !== 'connected') {
       try {
         const qrImage = await QRCode.toDataURL(currentQR, { width: 300 })
@@ -149,11 +161,10 @@ export async function registerSandboxRoutes(fastify: FastifyInstance) {
         html = html.replace('{{QR_CONTENT}}', '<p>Error generando QR</p>')
       }
     }
-    
+
     reply.type('text/html').send(html)
   })
-  
-  // Página de Sandbox - Chat
+
   fastify.get('/sandbox', async (request, reply) => {
     try {
       const html = readFileSync(join(__dirname, 'sandbox.html'), 'utf8')
@@ -163,66 +174,54 @@ export async function registerSandboxRoutes(fastify: FastifyInstance) {
       reply.status(500).send('Error loading sandbox')
     }
   })
-  
-  // API: Obtener historial
-  fastify.get('/api/conversation', async () => {
-    return conversationHistory
-  })
-  
-  // API: Simular mensaje
+
+  fastify.get('/api/conversation', async () => conversationHistory)
+
   fastify.post('/api/simulate', async (request, reply) => {
     const { message } = request.body as { message: string }
-    
     if (!message) {
       return reply.status(400).send({ error: 'Mensaje requerido' })
     }
-    
+
     addToConversation('user', message)
-    
-    if (onSimulatedMessage) {
-      try {
-        const responses = await onSimulatedMessage(message, sandboxIsExistingClient, sandboxDebugMode)
-        return { responses }
-      } catch (error) {
-        logger.error('Error procesando mensaje simulado:', error)
-        return { responses: [{ text: 'Error al procesar el mensaje', flow: 'error' }] }
-      }
+
+    if (!router) {
+      return { responses: [{ text: 'Bot router no configurado', flow: 'error' }] }
     }
-    
-    return { responses: [{ text: 'Bot no configurado', flow: 'error' }] }
+
+    try {
+      const responses = await routeSandboxMessage(router, message, sandboxDebugMode)
+      return { responses }
+    } catch (error) {
+      logger.error('Error procesando mensaje simulado:', error)
+      return { responses: [{ text: 'Error al procesar el mensaje', flow: 'error' }] }
+    }
   })
-  
-  // API: Modo cliente
-  fastify.get('/api/sandbox/client-mode', async () => {
-    return { isExisting: sandboxIsExistingClient }
-  })
-  
+
+  fastify.get('/api/sandbox/client-mode', async () => ({ isExisting: sandboxIsExistingClient }))
+
   fastify.post('/api/sandbox/client-mode', async (request) => {
     const { isExisting } = request.body as { isExisting: boolean }
     sandboxIsExistingClient = isExisting
     logger.info(`[SANDBOX] Modo: ${isExisting ? 'CONTACTO GUARDADO' : 'CONTACTO NUEVO'}`)
     return { success: true, isExisting: sandboxIsExistingClient }
   })
-  
-  // API: Modo debug
-  fastify.get('/api/sandbox/debug-mode', async () => {
-    return { debugMode: sandboxDebugMode }
-  })
-  
+
+  fastify.get('/api/sandbox/debug-mode', async () => ({ debugMode: sandboxDebugMode }))
+
   fastify.post('/api/sandbox/debug-mode', async (request) => {
     const { debugMode } = request.body as { debugMode: boolean }
     sandboxDebugMode = debugMode
     logger.info(`[SANDBOX] Debug: ${debugMode ? 'ON' : 'OFF'}`)
     return { success: true, debugMode: sandboxDebugMode }
   })
-  
-  // API: Nueva conversación — limpia historial visual + memoria del bot
+
   fastify.post('/api/conversation/clear', async () => {
     conversationHistory.length = 0
     deleteConversation('sandbox_user')
     logger.info('[SANDBOX] Nueva conversación: historial y memoria del bot reseteados')
     return { success: true }
   })
-  
+
   logger.info('[SERVER] Rutas del sandbox registradas')
 }
