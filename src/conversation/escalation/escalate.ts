@@ -1,44 +1,35 @@
+/**
+ * Escalation detection (master prompt §5.2).
+ *
+ * Rules:
+ *  - Keywords live in bot.config.yaml — code carries no business constants.
+ *  - Detection uses unicode-aware word boundaries (not raw substring) so
+ *    "urgentemente" does NOT match the keyword "urgente".
+ *  - Negation guard: if a Spanish negator appears within the previous
+ *    NEGATION_WINDOW_TOKENS tokens, the match is suppressed. "no es urgente"
+ *    no longer escalates. Keywords that THEMSELVES start with a negator
+ *    (e.g. "no entiendo") skip the guard so they still escalate as intended.
+ *  - A user repeating the same message ≥ repeatMessageThreshold times
+ *    escalates regardless of content.
+ */
+
 import { logger } from '../../observability/logger.js'
 import { botConfig } from '../../config/bot-config.js'
 
-// Palabras clave de URGENCIA
-// NOTA: "hoy" y "mañana" eliminados — generan falsos positivos masivos.
-// Muchas consultas legales legítimas contienen estas palabras:
-// "me despidieron hoy", "¿puedo jubilarme mañana?", "tengo cita mañana"
-const URGENCIA_KEYWORDS = [
-  'urgente', 'emergencia',
-  'hablar con alguien', 'persona real', 'abogado real',
-  'cuanto antes', 'ya mismo', 'inmediato'
-]
-
-// Palabras clave de FRUSTRACIÓN / SENTIMIENTO NEGATIVO
-// Eliminado "denuncia" — muchos clientes preguntan sobre poner denuncias legítimas
-const NEGATIVO_KEYWORDS = [
-  'no entiendo', 'no me sirve', 'no me ayuda', 'queja',
-  'enfadado', 'enfadada', 'harto', 'harta', 'indignado', 'indignada',
-  'esto es una mierda', 'no sirve', 'inutil', 'inútil', 'vergüenza',
-  'estafa', 'timo', 'engaño', 'mentira', 'ridiculo', 'ridículo'
-]
-
-// Palabras que indican CONFUSIÓN / CONSULTA COMPLEJA
-// Eliminado "es complicado", "es complejo", "situación difícil" — los clientes
-// describen así sus casos legales de forma legítima sin estar frustrados
-const COMPLEJO_KEYWORDS = [
-  'no lo entiendo', 'me he perdido', 'no me queda claro',
-  'puedes repetir', 'puede repetir', 'no se que hacer', 'no sé qué hacer'
-]
-
-// TTL para limpiar entradas antiguas de mensajes repetidos (24h)
 const MENSAJES_REPETIDOS_TTL_MS = 24 * 60 * 60 * 1000
 
-// Contador de mensajes repetidos por usuario (con timestamp para TTL)
-const mensajesRepetidos = new Map<string, { ultimo: string; contador: number; timestamp: number }>()
+const NEGATORS = new Set(['no', 'nunca', 'jamás', 'jamas', 'tampoco', 'sin', 'ni'])
+const NEGATION_WINDOW_TOKENS = 4
+
+const mensajesRepetidos = new Map<
+  string,
+  { ultimo: string; contador: number; timestamp: number }
+>()
 
 function detectarMensajeRepetido(phone: string, message: string): boolean {
   const lower = message.toLowerCase().trim()
   const now = Date.now()
 
-  // Limpiar entradas expiradas en cada llamada (coste O(n) amortizado con el TTL)
   for (const [key, val] of mensajesRepetidos) {
     if (now - val.timestamp > MENSAJES_REPETIDOS_TTL_MS) {
       mensajesRepetidos.delete(key)
@@ -46,44 +37,67 @@ function detectarMensajeRepetido(phone: string, message: string): boolean {
   }
 
   const registro = mensajesRepetidos.get(phone)
-
   if (registro && registro.ultimo === lower) {
     registro.contador++
     registro.timestamp = now
     if (registro.contador >= botConfig.escalation.repeatMessageThreshold) {
-      mensajesRepetidos.delete(phone) // Resetear después de escalar
+      mensajesRepetidos.delete(phone)
       return true
     }
   } else {
     mensajesRepetidos.set(phone, { ultimo: lower, contador: 1, timestamp: now })
   }
-
   return false
 }
 
-export function shouldEscalate(message: string, phone?: string): { escalate: boolean; reason?: string } {
-  const lower = message.toLowerCase()
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
 
-  // 1. Urgencia
-  if (URGENCIA_KEYWORDS.some(kw => lower.includes(kw))) {
+function firstToken(s: string): string {
+  return (s.match(/\S+/)?.[0] ?? '').toLowerCase()
+}
+
+function isNegated(textBefore: string): boolean {
+  const tokens = textBefore.match(/\p{L}+/gu) ?? []
+  const window = tokens.slice(-NEGATION_WINDOW_TOKENS)
+  return window.some((t) => NEGATORS.has(t.toLowerCase()))
+}
+
+function matchesKeyword(text: string, kw: string): boolean {
+  const lower = text.toLowerCase()
+  const kwLower = kw.toLowerCase()
+  // Unicode-aware word boundary via lookbehind/lookahead.
+  const re = new RegExp(
+    `(?<![\\p{L}\\p{N}])${escapeRegex(kwLower)}(?![\\p{L}\\p{N}])`,
+    'u'
+  )
+  const m = lower.match(re)
+  if (!m || m.index === undefined) return false
+  // Keywords that themselves start with a negator must not be filtered out
+  // by the negation guard (e.g. "no entiendo" IS a legitimate escalation).
+  if (NEGATORS.has(firstToken(kwLower))) return true
+  return !isNegated(lower.slice(0, m.index))
+}
+
+export function shouldEscalate(
+  message: string,
+  phone?: string
+): { escalate: boolean; reason?: string } {
+  const esc = botConfig.escalation
+
+  if (esc.urgencyKeywords.some((kw) => matchesKeyword(message, kw))) {
     return { escalate: true, reason: 'urgencia' }
   }
-
-  // 2. Sentimiento negativo / frustración
-  if (NEGATIVO_KEYWORDS.some(kw => lower.includes(kw))) {
+  if (esc.negativeKeywords.some((kw) => matchesKeyword(message, kw))) {
     return { escalate: true, reason: 'frustración' }
   }
-
-  // 3. Consulta compleja / confusión
-  if (COMPLEJO_KEYWORDS.some(kw => lower.includes(kw))) {
+  if (esc.complexityKeywords.some((kw) => matchesKeyword(message, kw))) {
     return { escalate: true, reason: 'consulta_compleja' }
   }
-
-  // 4. Mensaje repetido 3+ veces
   if (phone && detectarMensajeRepetido(phone, message)) {
     return { escalate: true, reason: 'mensaje_repetido' }
   }
-
   return { escalate: false }
 }
 
@@ -93,8 +107,11 @@ interface EscalateContext {
   name?: string
 }
 
+/**
+ * Legacy log-only sink. Kept for the default EscalationNotifier fallback;
+ * real transports live in src/conversation/escalation/telegram.ts.
+ */
 export async function notifyHuman(ctx: EscalateContext): Promise<void> {
-  // MVP: Log en consola. Futuro: notificacion Telegram/email
   logger.warn('=== ESCALADO A HUMANO ===')
   logger.warn(`Numero: ${ctx.from}`)
   logger.warn(`Nombre: ${ctx.name || 'No disponible'}`)

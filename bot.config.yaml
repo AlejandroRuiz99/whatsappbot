@@ -49,8 +49,50 @@ whatsapp:
   closureReactionDelay: [500, 1500]
 
 # ─── Escalado a humano ───
+# Detección usa fronteras de palabra (unicode-aware) + guard de negación
+# de 4 tokens antes del match. Por eso "no es urgente" NO escala.
+# Keywords aquí, lógica en src/conversation/escalation/escalate.ts.
 escalation:
   repeatMessageThreshold: 3
+  urgencyKeywords:
+    - urgente
+    - emergencia
+    - hablar con alguien
+    - persona real
+    - abogado real
+    - cuanto antes
+    - ya mismo
+    - inmediato
+  negativeKeywords:
+    - no entiendo
+    - no me sirve
+    - no me ayuda
+    - queja
+    - enfadado
+    - enfadada
+    - harto
+    - harta
+    - indignado
+    - indignada
+    - esto es una mierda
+    - no sirve
+    - inutil
+    - inútil
+    - vergüenza
+    - estafa
+    - timo
+    - engaño
+    - mentira
+    - ridiculo
+    - ridículo
+  complexityKeywords:
+    - no lo entiendo
+    - me he perdido
+    - no me queda claro
+    - puedes repetir
+    - puede repetir
+    - no se que hacer
+    - no sé qué hacer
 
 # ─── LLM (modelos y parámetros) ───
 llm:

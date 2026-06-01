@@ -11,6 +11,24 @@ All notable changes to the whatsappbot project. Format: phase → PR → list.
 > pending and will be backfilled after Phase 4. Going forward labels match
 > the spec.
 
+### PR 4.2 — Escalation false-positive fix (word boundaries + negation guard)
+
+**Fixed (master prompt §5.2)**
+- Detection no longer uses raw substring matching. `matchesKeyword` now uses unicode-aware word boundaries via lookbehind/lookahead (`(?<![\p{L}\p{N}])…(?![\p{L}\p{N}])`), so `urgentemente` does NOT trigger the keyword `urgente`.
+- Added a negation guard: if a Spanish negator (`no`, `nunca`, `jamás`, `tampoco`, `sin`, `ni`) appears within the previous 4 tokens before the match, the match is suppressed. `"no es urgente"`, `"ya no es urgente"`, `"no quiero hablar con alguien"` no longer escalate.
+- Keywords that themselves start with a negator (e.g. `no entiendo`, `no me sirve`) skip the guard so they still escalate as intended, including the corner case `"no, no entiendo"`.
+
+**Moved**
+- Three keyword lists moved from code (`escalate.ts`) to `bot.config.yaml:escalation.{urgencyKeywords,negativeKeywords,complexityKeywords}` — single source of truth per master prompt §4.1. `bot-config.ts` zod schema extended with array validation (≥ 1 entry per list).
+
+**Verification**
+- 14/14 detection test cases pass: 7 positive (real escalations), 7 negative (false-positives correctly suppressed including word-boundary and negation cases).
+- Build clean.
+
+**Deferred**
+- Negation window size (`4`) is hardcoded — could go to yaml if tuning becomes a thing.
+- Email/webhook notifier transports (the spec lists Telegram/email/webhook as a composable family). Email lands later if needed.
+
 ### PR 4.1 — TelegramEscalationNotifier + richer payload
 
 **Added**

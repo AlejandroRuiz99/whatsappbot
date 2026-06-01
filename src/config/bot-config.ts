@@ -86,6 +86,9 @@ const BotConfigSchema = z.object({
   }),
   escalation: z.object({
     repeatMessageThreshold: z.number().int().positive(),
+    urgencyKeywords: z.array(z.string().min(1)).min(1),
+    negativeKeywords: z.array(z.string().min(1)).min(1),
+    complexityKeywords: z.array(z.string().min(1)).min(1),
   }),
   llm: z.object({
     groq: LLMProfile,
