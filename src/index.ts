@@ -4,12 +4,21 @@
  * MessageRouter y los inyecta en los canales activos.
  */
 
-import { config, providerStatus, ragStatus } from './config/env.js'
+import {
+  config,
+  providerStatus,
+  ragStatus,
+  escalationStatus,
+} from './config/env.js'
 import { logger } from './observability/logger.js'
 import { startMemoryCleanup } from './conversation/store/memory.js'
 import { defaultConversationStore } from './conversation/store/contract.js'
 import { defaultCRMClient } from './conversation/classifier/contract.js'
-import { defaultEscalationNotifier } from './conversation/escalation/contract.js'
+import {
+  defaultEscalationNotifier,
+  type EscalationNotifier,
+} from './conversation/escalation/contract.js'
+import { createTelegramNotifier } from './conversation/escalation/telegram.js'
 import { createDefaultRouter } from './pipeline/router.js'
 import { startServer } from './server/http.js'
 import { connectToWhatsApp } from './channels/whatsapp/index.js'
@@ -26,6 +35,11 @@ async function main() {
   } else {
     logger.warn(`[RAG] disabled: ${ragStatus.reason}`)
   }
+  if (escalationStatus.transport === 'telegram') {
+    logger.info('[ESCALATION] transport=telegram (real human notification)')
+  } else {
+    logger.warn(`[ESCALATION] transport=log — ${escalationStatus.reason}`)
+  }
   logger.info('========================================')
 
   startMemoryCleanup()
@@ -34,11 +48,24 @@ async function main() {
   await startServer()
   logger.info(`Servidor web: http://localhost:${config.PORT}`)
 
+  // Escalation notifier: Telegram when configured, console-log otherwise.
+  // Telegram impl wraps the log impl as fallback so alerts are never lost.
+  const notifier: EscalationNotifier =
+    escalationStatus.transport === 'telegram'
+      ? createTelegramNotifier(
+          {
+            botToken: config.TELEGRAM_BOT_TOKEN,
+            chatId: config.TELEGRAM_NOTIFICATION_CHAT_ID,
+          },
+          defaultEscalationNotifier
+        )
+      : defaultEscalationNotifier
+
   // Production router — uses the static-list CRM.
   const productionRouter = createDefaultRouter({
     store: defaultConversationStore,
     crm: defaultCRMClient,
-    notifier: defaultEscalationNotifier,
+    notifier,
   })
 
   // Sandbox mode: build a second router instance whose CRM reflects the
@@ -48,7 +75,7 @@ async function main() {
     const sandboxRouter = createDefaultRouter({
       store: defaultConversationStore,
       crm: sandboxCRM,
-      notifier: defaultEscalationNotifier,
+      notifier,
     })
     setRouter(sandboxRouter)
     logger.info(`[SANDBOX] UI: http://localhost:${config.PORT}/sandbox`)

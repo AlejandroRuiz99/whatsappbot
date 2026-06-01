@@ -49,6 +49,19 @@ const EnvSchema = z
     RAG_TOP_K: z.coerce.number().int().positive().default(5),
     RAG_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.7),
     RAG_VIDEO_THRESHOLD: z.coerce.number().min(0).max(1).default(0.75),
+
+    // Real human notification (master prompt §4.3, §5.2). Both must be
+    // set together to enable the Telegram transport; otherwise the
+    // notifier falls back to console logging.
+    TELEGRAM_BOT_TOKEN: z
+      .union([
+        z.literal(''),
+        z.string().regex(/^\d+:[A-Za-z0-9_-]+$/, 'must be <bot_id>:<secret>'),
+      ])
+      .default(''),
+    TELEGRAM_NOTIFICATION_CHAT_ID: z
+      .union([z.literal(''), z.string().regex(/^-?\d+$/, 'must be numeric')])
+      .default(''),
   })
   .superRefine((env, ctx) => {
     if (env.BOT_MODE === 'sandbox' && !env.TEST_PHONE_NUMBER.trim()) {
@@ -70,6 +83,16 @@ const EnvSchema = z
         code: 'custom',
         message: 'TELEGRAM_LINK must be a real Telegram URL in production (currently placeholder)',
         path: ['TELEGRAM_LINK'],
+      })
+    }
+    const hasToken = env.TELEGRAM_BOT_TOKEN !== ''
+    const hasChat = env.TELEGRAM_NOTIFICATION_CHAT_ID !== ''
+    if (hasToken !== hasChat) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'TELEGRAM_BOT_TOKEN and TELEGRAM_NOTIFICATION_CHAT_ID must be set together',
+        path: ['TELEGRAM_BOT_TOKEN'],
       })
     }
   })
@@ -112,3 +135,15 @@ export const ragStatus: { enabled: boolean; reason: string | null } = (() => {
     ? { enabled: true, reason: null }
     : { enabled: false, reason: reasons.join('; ') }
 })()
+
+/**
+ * Escalation transport selected at boot. `telegram` requires both env
+ * keys; otherwise the bot falls back to `log` (console only). Logged
+ * explicitly at startup so operators can spot a misconfigured deploy.
+ */
+export const escalationStatus: {
+  transport: 'telegram' | 'log'
+  reason: string | null
+} = config.TELEGRAM_BOT_TOKEN && config.TELEGRAM_NOTIFICATION_CHAT_ID
+  ? { transport: 'telegram', reason: null }
+  : { transport: 'log', reason: 'TELEGRAM_BOT_TOKEN/CHAT_ID not set — console fallback only' }

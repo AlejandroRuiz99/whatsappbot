@@ -2,6 +2,40 @@
 
 All notable changes to the whatsappbot project. Format: phase → PR → list.
 
+## Phase 4 — Escalado real
+
+> Note on roadmap order: the master prompt §10 lists Phase 2 = Persistencia
+> (SQLite) and Phase 3 = Router. PRs `phase2/pr2.1` (`01cb5c2`) and
+> `phase2/pr2.2` (`037c5e8`) actually implemented Phase 3 + Phase 5 work
+> mislabeled as "Phase 2 — Pipeline canónico". Phase 2 (SQLite) is still
+> pending and will be backfilled after Phase 4. Going forward labels match
+> the spec.
+
+### PR 4.1 — TelegramEscalationNotifier + richer payload
+
+**Added**
+- `src/conversation/escalation/telegram.ts` — `TelegramEscalationNotifier` posts to `https://api.telegram.org/bot<token>/sendMessage` with a Markdown-formatted payload (phone masked to last 3 digits, reason, recent messages, optional conversation URL). 5-second `AbortController` timeout. Truncates body to ≤4000 chars (Telegram limit).
+- Wraps a fallback `EscalationNotifier` (defaults to the log impl): on HTTP error, network error, or timeout the alert is delivered via the fallback so it is **never silently lost**. Errors are logged with the upstream cause.
+- `TELEGRAM_BOT_TOKEN` + `TELEGRAM_NOTIFICATION_CHAT_ID` env vars (master prompt §4.3 / §5.2). Both must be set together — `env.ts` superRefine rule rejects partial config.
+- `escalationStatus: { transport: 'telegram' | 'log'; reason }` derived once at boot. `src/index.ts` logs `[ESCALATION] transport=telegram` or `[ESCALATION] transport=log — <reason>` so operators can spot a misconfigured deploy.
+- `.env.example`: documented Telegram fields with BotFather hint.
+
+**Changed**
+- `src/pipeline/router.ts`: escalation flow now passes the last 10 stored messages + the current one as `lastMessages` to the notifier (was: only the current message). This gives the human enough context to act without reading the conversation.
+- `src/index.ts`: both router instances (production + sandbox) share the same `notifier` so escalations from the sandbox UI also reach Telegram when configured.
+
+**Behavior**
+- Notifier never throws upstream — router/channel cannot fail because of a Telegram outage.
+- Currently in this repo: no Telegram keys configured → boot logs `[ESCALATION] transport=log — TELEGRAM_BOT_TOKEN/CHAT_ID not set`. Configuring both keys flips the transport at next boot.
+
+**Verification**
+- `npm run build` clean.
+- Boot smoke shows the new `[ESCALATION]` line.
+- Telegram smoke against a fake token → 401 from real API → fallback notifier fires; alert preserved.
+
+**Deferred to PR 4.2**
+- Escalation false-positive correction (master prompt §5.2: "n-gramas o frases, not single tokens"). Today single tokens like `urgente`, `estafa` still substring-match — `\b`-boundary regex + negation guard land in PR 4.2.
+
 ## Phase 2 — Pipeline canónico
 
 ### PR 2.2 — Fix flow order + soft-limit OR + dedup extranjería + missing metrics

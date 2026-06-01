@@ -69,10 +69,24 @@ export class DefaultMessageRouter implements MessageRouter {
     // 3. ESCALATION
     const esc = shouldEscalate(input.body, phone)
     if (esc.escalate) {
+      // Build a richer payload: last N messages from the store + the
+      // current incoming one (not stored yet — added below).
+      const history = this.deps.store.getHistoryWithTimestamps(phone) ?? []
+      const lastMessages = history.slice(-10).map((m) => ({
+        role: m.role,
+        content: m.content,
+        timestamp: m.timestamp,
+      }))
+      lastMessages.push({
+        role: 'user',
+        content: input.body,
+        timestamp: Date.now(),
+      })
+
       await this.deps.notifier.notify({
         phone,
         reason: esc.reason || 'other',
-        lastMessages: [{ role: 'user', content: input.body }],
+        lastMessages,
         name: input.pushName,
       })
       const text = MESSAGES.escalation
