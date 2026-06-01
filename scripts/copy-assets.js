@@ -2,11 +2,13 @@ import { cpSync } from 'fs'
 import { join } from 'path'
 
 const assets = [
-  { from: 'src/server/sandbox/qr.html', to: 'dist/server/sandbox/qr.html' },
-  { from: 'src/server/sandbox/sandbox.html', to: 'dist/server/sandbox/sandbox.html' },
-  { from: 'src/server/sandbox/sandbox.js', to: 'dist/server/sandbox/sandbox.js' },
-  { from: 'src/server/sandbox/styles.css', to: 'dist/server/sandbox/styles.css' },
-  { from: 'src/services/knowledgebase/llm/prompts', to: 'dist/services/knowledgebase/llm/prompts' },
+  // Sandbox channel
+  { from: 'src/channels/sandbox/qr.html', to: 'dist/channels/sandbox/qr.html' },
+  { from: 'src/channels/sandbox/sandbox.html', to: 'dist/channels/sandbox/sandbox.html' },
+  { from: 'src/channels/sandbox/sandbox.js', to: 'dist/channels/sandbox/sandbox.js' },
+  { from: 'src/channels/sandbox/styles.css', to: 'dist/channels/sandbox/styles.css' },
+  // LLM prompts
+  { from: 'src/knowledge/llm/prompts', to: 'dist/knowledge/llm/prompts' },
   // Admin panel
   { from: 'src/server/admin/admin.html', to: 'dist/server/admin/admin.html' },
   { from: 'src/server/admin/admin.js', to: 'dist/server/admin/admin.js' },

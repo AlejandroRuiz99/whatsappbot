@@ -4,6 +4,38 @@ All notable changes to the whatsappbot project. Format: phase → PR → list.
 
 ## Phase 1 — Cimientos
 
+### PR 1.3 — Folder reshuffle to §4.2 + `/health` split
+
+**Moved** (50 `git mv` renames, history preserved):
+- `src/whatsapp/*` → `src/channels/whatsapp/*`
+- `src/server/sandbox/*` → `src/channels/sandbox/*` (including HTML/JS/CSS assets)
+- `src/services/conversation/*` → `src/conversation/{store,classifier,escalation,humanizer}/*` with renames:
+  - `classifier.ts` → `classifier/static-list.ts`
+  - `humanizer.ts` → `humanizer/index.ts`
+  - `*.contract.ts` → `contract.ts` (per subfolder)
+  - `conversation.md` → `README.md`
+- `src/services/knowledgebase/llm/*` → `src/knowledge/llm/*`
+- `src/services/knowledgebase/rag/*` (incl. `tiktok/` and `scripts/` subtrees) → `src/knowledge/rag/*`
+- `src/services/knowledgebase/services-catalog/*` → `src/knowledge/catalog/*`
+- `src/services/knowledgebase/index.ts` → `src/knowledge/index.ts`
+- `src/services/knowledgebase/knowledgebase.md` → `src/knowledge/README.md`
+- `src/utils/{logger,log-service,metrics,event-bus}.ts` → `src/observability/*`
+
+**Stays in place**:
+- `src/utils/helpers.ts` (pure util, no observability concern)
+- `src/server/admin/*` (already correct per §4.2)
+
+**New**:
+- `src/server/health/index.ts` — `registerHealthRoutes(app)` extracted from `http.ts`. `/ready` will land in Phase 8.
+
+**Imports**: 62 relative-import paths rewritten across 24 files (depth-aware recompute via a one-shot Node script, removed after use). Asset paths in `scripts/copy-assets.js` updated.
+
+**Verification**:
+- `npm run build` exits 0.
+- Runtime boot (`node dist/index.js`) reaches Fastify listen, RAG-enabled log fires, all 5 default contracts load.
+
+**Behavior**: zero functional change. No DI wiring beyond the contracts already in PR 1.2; no router implementation (Phase 2); no auth / SQLite / response-filter (later phases).
+
 ### PR 1.2 — Interface contracts (§4.3), additive, no file moves
 
 **Added**

@@ -3,7 +3,8 @@ import { rmSync } from 'fs'
 import { join } from 'path'
 import * as QRCode from 'qrcode'
 import { config } from '../config/env.js'
-import { logger } from '../utils/logger.js'
+import { logger } from '../observability/logger.js'
+import { registerHealthRoutes } from './health/index.js'
 
 // Estado de conexión (compartido entre sandbox y producción)
 let currentQR: string | null = null
@@ -33,13 +34,9 @@ export function getConnectionStatus() {
 export async function startServer() {
   const fastify = Fastify({ logger: false })
   
-  // Health check
-  fastify.get('/health', async () => ({
-    status: 'ok',
-    connection: connectionStatus,
-    mode: config.BOT_MODE
-  }))
-  
+  // Health check (split into server/health/ — master prompt §4.2)
+  registerHealthRoutes(fastify)
+
   // API status
   fastify.get('/api/status', async () => ({
     status: connectionStatus,
@@ -124,7 +121,7 @@ export async function startServer() {
 
   // Rutas del sandbox (solo en modo sandbox)
   if (config.BOT_MODE === 'sandbox') {
-    const { registerSandboxRoutes } = await import('./sandbox/index.js')
+    const { registerSandboxRoutes } = await import('../channels/sandbox/index.js')
     await registerSandboxRoutes(fastify)
     logger.info(`[SERVER] Modo SANDBOX activo`)
   } else {

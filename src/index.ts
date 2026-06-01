@@ -4,10 +4,10 @@
  */
 
 import { config, providerStatus, ragStatus } from './config/env.js'
-import { logger } from './utils/logger.js'
-import { startMemoryCleanup } from './services/conversation/memory.js'
+import { logger } from './observability/logger.js'
+import { startMemoryCleanup } from './conversation/store/memory.js'
 import { startServer } from './server/http.js'
-import { connectToWhatsApp } from './whatsapp/index.js'
+import { connectToWhatsApp } from './channels/whatsapp/index.js'
 
 async function main() {
   logger.info('========================================')
@@ -33,8 +33,8 @@ async function main() {
 
   // Configuración específica por modo
   if (config.BOT_MODE === 'sandbox') {
-    const { setMessageHandler } = await import('./server/sandbox/index.js')
-    const { handleSandboxMessage } = await import('./server/sandbox/handler.js')
+    const { setMessageHandler } = await import('./channels/sandbox/index.js')
+    const { handleSandboxMessage } = await import('./channels/sandbox/handler.js')
     setMessageHandler(handleSandboxMessage)
     logger.info(`[SANDBOX] UI: http://localhost:${config.PORT}/sandbox`)
     logger.info(`[SANDBOX] Filtrando mensajes de: ${config.TEST_PHONE_NUMBER}`)

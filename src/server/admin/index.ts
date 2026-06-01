@@ -7,17 +7,17 @@ import { readFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import type { FastifyInstance } from 'fastify'
-import { botEvents, type BotEvent } from '../../utils/event-bus.js'
-import { getLogBuffer, isDebugEnabled, setDebugEnabled } from '../../utils/log-service.js'
-import { getMetricsSnapshot } from '../../utils/metrics.js'
+import { botEvents, type BotEvent } from '../../observability/event-bus.js'
+import { getLogBuffer, isDebugEnabled, setDebugEnabled } from '../../observability/log-service.js'
+import { getMetricsSnapshot } from '../../observability/metrics.js'
 import {
   listActiveConversations,
   getConversationWithTimestamps,
   deleteConversation,
-} from '../../services/conversation/memory.js'
+} from '../../conversation/store/memory.js'
 import { getConnectionStatus, getQRCode } from '../http.js'
-import { getWhatsAppUser, getPendingMessageCount } from '../../whatsapp/connection.js'
-import { logger } from '../../utils/logger.js'
+import { getWhatsAppUser, getPendingMessageCount } from '../../channels/whatsapp/connection.js'
+import { logger } from '../../observability/logger.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
