@@ -7,13 +7,14 @@ conversation:
   cleanupIntervalMinutes: 60
 
 # ─── Humanización (delays y formato WhatsApp) ───
+# Basado en análisis de 119 chats reales: mensajes cortos, 3-6 burbujas por turno
 humanizer:
-  whatsappMaxLength: 180
+  whatsappMaxLength: 160
 
   cohesiveBlock:
-    maxSentences: 3
-    maxLength: 350
-    probability: 0.3
+    maxSentences: 2
+    maxLength: 280
+    probability: 0.2
 
   readingDelay:
     veryShort: [300, 800]     # <20 chars
@@ -69,18 +70,21 @@ llm:
     frequencyPenalty: 0.3
 
 # ─── Derivación a consulta (soft limits) ───
+# Ajustado: en los chats reales la cualificación ocupa 2-3 mensajes antes de vender.
+# Phase1 = solo cualificación (preguntas). Phase2 = ancla positiva + mención natural.
+# Phase3 = propuesta directa. Phase4 = no más info gratis.
 softLimits:
   phase1:
-    maxChars: 250
-    maxMessages: 5
+    maxChars: 300
+    maxMessages: 4
   phase2:
-    maxChars: 500
-    maxMessages: 7
+    maxChars: 600
+    maxMessages: 6
   phase3:
-    maxChars: 700
-    maxMessages: 9
-  consultationPrice: "69€"         # Consulta genérica (laboral, civil, familia...)
-  studyPrice: "120€"              # Estudio personalizado jubilación
+    maxChars: 900
+    maxMessages: 8
+  consultationPrice: "69 euros"         # Consulta genérica (laboral, civil, familia...)
+  studyPrice: "120 euros"              # Estudio personalizado jubilación
   subscriptionLabel: "suscripción mensual"  # Para casos de incapacidad sin resolución
 
 # ─── RAG ───

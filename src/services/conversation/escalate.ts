@@ -2,25 +2,30 @@ import { logger } from '../../utils/logger.js'
 import { botConfig } from '../../config/bot-config.js'
 
 // Palabras clave de URGENCIA
+// NOTA: "hoy" y "mañana" eliminados — generan falsos positivos masivos.
+// Muchas consultas legales legítimas contienen estas palabras:
+// "me despidieron hoy", "¿puedo jubilarme mañana?", "tengo cita mañana"
 const URGENCIA_KEYWORDS = [
-  'urgente', 'emergencia', 'plazo', 'manana', 'mañana', 'hoy',
+  'urgente', 'emergencia',
   'hablar con alguien', 'persona real', 'abogado real',
   'cuanto antes', 'ya mismo', 'inmediato'
 ]
 
 // Palabras clave de FRUSTRACIÓN / SENTIMIENTO NEGATIVO
+// Eliminado "denuncia" — muchos clientes preguntan sobre poner denuncias legítimas
 const NEGATIVO_KEYWORDS = [
-  'no entiendo', 'no me sirve', 'no me ayuda', 'queja', 'denuncia',
+  'no entiendo', 'no me sirve', 'no me ayuda', 'queja',
   'enfadado', 'enfadada', 'harto', 'harta', 'indignado', 'indignada',
   'esto es una mierda', 'no sirve', 'inutil', 'inútil', 'vergüenza',
   'estafa', 'timo', 'engaño', 'mentira', 'ridiculo', 'ridículo'
 ]
 
 // Palabras que indican CONFUSIÓN / CONSULTA COMPLEJA
+// Eliminado "es complicado", "es complejo", "situación difícil" — los clientes
+// describen así sus casos legales de forma legítima sin estar frustrados
 const COMPLEJO_KEYWORDS = [
   'no lo entiendo', 'me he perdido', 'no me queda claro',
-  'puedes repetir', 'puede repetir', 'no se que hacer', 'no sé qué hacer',
-  'es complicado', 'es complejo', 'situación difícil'
+  'puedes repetir', 'puede repetir', 'no se que hacer', 'no sé qué hacer'
 ]
 
 // TTL para limpiar entradas antiguas de mensajes repetidos (24h)

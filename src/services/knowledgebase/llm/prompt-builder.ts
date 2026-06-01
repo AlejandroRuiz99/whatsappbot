@@ -243,7 +243,7 @@ function getTimeGreeting(): string {
     greeting += ' Hoy es fin de semana.'
   }
 
-  return `${greeting} Adapta tu saludo de forma natural (buenos días/buenas tardes/buenas noches) solo si es la primera interacción. No lo fuerces en cada mensaje.`
+  return `${greeting} Usa "Buenos días" / "Buenas tardes" / "Buenas noches" solo en el primer mensaje de la conversación, como hacen en el despacho real. En mensajes posteriores no saludes de nuevo.`
 }
 
 /**
@@ -269,7 +269,7 @@ export function buildSystemPrompt(
   // Señal explícita de primer mensaje para que la presentación sea fiable
   const isFirstMessage = !phone || getUserMessageCount(phone) === 0
   const firstMessageNote = isFirstMessage
-    ? '\n\nCONTEXTO: Este es el PRIMER mensaje de esta persona. Preséntate como atención de Compromiso Legal siguiendo las instrucciones de PRIMER MENSAJE.'
+    ? '\n\nCONTEXTO: Este es el PRIMER mensaje de esta persona. Preséntate como Inmaculada, administrativa de Compromiso Legal, siguiendo las instrucciones de PRIMER MENSAJE. Saluda, preséntate con tu nombre y pregunta en qué puedes ayudarle.'
     : ''
 
   return `${prompt}${firstMessageNote}${ragSection}${legalKnowledge}${servicesContext}${conversationContext}${softLimitHint}`
@@ -289,6 +289,9 @@ function detectCaseType(phone: string): 'jubilacion' | 'incapacidad' | 'general'
  * - Jubilación → estudio personalizado (120€)
  * - Incapacidad → consulta (69€) o suscripción mensual si aún no hay resolución
  * - General → consulta estándar (69€)
+ *
+ * Los hints están redactados como lo haría la administrativa real del despacho:
+ * primero cualifica, luego ancla positiva, luego propone con permiso.
  */
 function buildSoftLimitHint(phone: string): string {
   const msgCount = getUserMessageCount(phone)
@@ -300,25 +303,25 @@ function buildSoftLimitHint(phone: string): string {
   const caseType = detectCaseType(phone)
 
   if (totalChars < sl.phase2.maxChars && msgCount <= sl.phase2.maxMessages) {
-    return '\n\nNOTA INTERNA: Ya tienes contexto suficiente del problema. Si no lo has hecho aún, busca un momento natural para mencionar el servicio que encaja. No lo fuerces, pero si surge la oportunidad menciónalo como algo lógico para su caso.'
+    return '\n\nNOTA INTERNA: Ya has cualificado al cliente. Si aún no lo has hecho, es buen momento para una "ancla positiva" (validar que hay caso: "perfecto, con esos datos parece que hay opciones interesantes") y mencionar que la especialista lo podría ver en consulta. No lo fuerces, busca un momento natural.'
   }
 
   if (totalChars < sl.phase3.maxChars && msgCount <= sl.phase3.maxMessages) {
     if (caseType === 'jubilacion') {
-      return `\n\nNOTA INTERNA: Ya tienes bastante información. Deberías haber sugerido el estudio personalizado de jubilación (${sl.studyPrice}). Si no lo has hecho, hazlo ahora. No des más cálculos ni detalles gratis. Incluye el enlace de citas.`
+      return `\n\nNOTA INTERNA: Ya tienes los datos del cliente. Propón el estudio personalizado de jubilación (${sl.studyPrice}): "Lo ideal es que la especialista le haga un estudio completo de todos los escenarios, son ${sl.studyPrice} e incluye informe + videollamada." Pregunta: "Si quiere le envío el enlace para que pueda agendar." No des más cálculos gratis.`
     }
     if (caseType === 'incapacidad') {
-      return `\n\nNOTA INTERNA: Ya tienes bastante información. Si hay una resolución denegatoria, deriva urgente a consulta (${sl.consultationPrice}) por el plazo. Si aún no hay resolución, ofrece la ${sl.subscriptionLabel} como acompañamiento durante el proceso. Incluye el enlace.`
+      return `\n\nNOTA INTERNA: Ya tienes los datos del cliente. Si hay resolución denegatoria, transmite urgencia real (hay plazo). Propón la consulta (${sl.consultationPrice}): "la consulta abarca viabilidad, cálculos, asesoramiento de cara al tribunal médico y acompañamiento." Si no hay resolución, ofrece la ${sl.subscriptionLabel}. Pregunta: "Si quiere le envío el enlace."`
     }
-    return `\n\nNOTA INTERNA: Ya tienes bastante información del cliente. Deberías haber sugerido la consulta. Si no lo has hecho, hazlo ahora. No des más info detallada gratis. Incluye el enlace de citas en tu respuesta.`
+    return `\n\nNOTA INTERNA: Ya tienes suficiente contexto. Propón la consulta (${sl.consultationPrice}) de forma natural: "Lo ideal es que esto lo vea la especialista en consulta, son ${sl.consultationPrice} y revisamos todo el caso en detalle." Pregunta si quiere que le envíes el enlace.`
   }
 
   // Fase 4: demasiado tiempo sin derivar
   if (caseType === 'jubilacion') {
-    return `\n\nNOTA INTERNA: Llevas demasiado tiempo orientando gratis sobre jubilación. Para ya de dar cálculos. Responde brevemente y ofrece el estudio personalizado (${sl.studyPrice}): "Para darte una respuesta exacta lo que haría es un estudio donde analizamos todos tus escenarios y te digo cuál te conviene más." Incluye el enlace de citas.`
+    return `\n\nNOTA INTERNA: Llevas demasiado rato orientando gratis. No des más información nueva. Responde brevemente y di: "Para darle una respuesta concreta lo ideal es que la especialista le haga el estudio, son ${sl.studyPrice} y le entrega un informe con todos los escenarios." Incluye el enlace. Si sigue preguntando: "Eso tendría que calcularlo la especialista en consulta."`
   }
   if (caseType === 'incapacidad') {
-    return `\n\nNOTA INTERNA: Llevas demasiado tiempo. Para de dar orientación. Responde brevemente y deriva: si hay resolución denegatoria → consulta urgente (${sl.consultationPrice}); si no hay aún → ${sl.subscriptionLabel} para acompañamiento. Incluye el enlace.`
+    return `\n\nNOTA INTERNA: Llevas demasiado rato. Responde brevemente y deriva. Si hay resolución denegatoria → "esto es urgente porque hay plazos, le recomiendo agendar consulta cuanto antes" (${sl.consultationPrice}). Si no hay resolución → ${sl.subscriptionLabel}. Incluye el enlace.`
   }
-  return `\n\nNOTA INTERNA: Llevas demasiado tiempo dando orientación gratis. Deja de dar información nueva. Responde brevemente y redirige a consulta con enlace y precio (${sl.consultationPrice}). Si el cliente sigue preguntando, responde algo como "Para esto necesitaría ver su caso en detalle en consulta" y punto.`
+  return `\n\nNOTA INTERNA: Llevas demasiado rato orientando gratis. No des más info nueva. Responde brevemente: "Para esto tendría que verlo la especialista en consulta" (${sl.consultationPrice}). Incluye el enlace. Si insiste: "Eso tendría que valorarlo la abogada viendo su documentación."`
 }
