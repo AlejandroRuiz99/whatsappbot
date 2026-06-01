@@ -298,15 +298,17 @@ function buildSoftLimitHint(phone: string): string {
   const totalChars = getUserTotalChars(phone)
   const sl = botConfig.softLimits
 
-  if (totalChars < sl.phase1.maxChars && msgCount <= sl.phase1.maxMessages) return ''
+  // OR logic (master prompt §5.1): stay in phase N if EITHER threshold is below.
+  // A long first message keeps the bot in cualification instead of jumping to hard-sell.
+  if (totalChars < sl.phase1.maxChars || msgCount <= sl.phase1.maxMessages) return ''
 
   const caseType = detectCaseType(phone)
 
-  if (totalChars < sl.phase2.maxChars && msgCount <= sl.phase2.maxMessages) {
+  if (totalChars < sl.phase2.maxChars || msgCount <= sl.phase2.maxMessages) {
     return '\n\nNOTA INTERNA: Ya has cualificado al cliente. Si aún no lo has hecho, es buen momento para una "ancla positiva" (validar que hay caso: "perfecto, con esos datos parece que hay opciones interesantes") y mencionar que la especialista lo podría ver en consulta. No lo fuerces, busca un momento natural.'
   }
 
-  if (totalChars < sl.phase3.maxChars && msgCount <= sl.phase3.maxMessages) {
+  if (totalChars < sl.phase3.maxChars || msgCount <= sl.phase3.maxMessages) {
     if (caseType === 'jubilacion') {
       return `\n\nNOTA INTERNA: Ya tienes los datos del cliente. Propón el estudio personalizado de jubilación (${sl.studyPrice}): "Lo ideal es que la especialista le haga un estudio completo de todos los escenarios, son ${sl.studyPrice} e incluye informe + videollamada." Pregunta: "Si quiere le envío el enlace para que pueda agendar." No des más cálculos gratis.`
     }

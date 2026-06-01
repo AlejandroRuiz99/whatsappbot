@@ -4,6 +4,26 @@ All notable changes to the whatsappbot project. Format: phase → PR → list.
 
 ## Phase 2 — Pipeline canónico
 
+### PR 2.2 — Fix flow order + soft-limit OR + dedup extranjería + missing metrics
+
+**Fixed**
+- **Closure ordering bug (audit critical)**: closure flow moved from #1 to #4 in the router, matching master prompt §3 (existing_client → extranjeria → escalation → closure → ai). An existing client who replies "gracias" now correctly receives the Telegram link instead of an emoji reaction. Verified by smoke (toggle `isExisting=true` + body=`gracias` → `existing_client`; `isExisting=false` + body=`gracias` → `closure`).
+- **Soft-limits AND → OR** (`src/knowledge/llm/prompt-builder.ts:301,305,309`): stay in phase N if EITHER threshold is below, per master prompt §5.1. A long detailed first message now stays in cualification instead of jumping to hard-sell.
+- **Extranjería keyword duplication**: list lives only in `bot.config.yaml:extranjeria.keywords` (35 entries, merged from the previous handler list and yaml list). `src/pipeline/handlers/extranjeria.ts` now reads `botConfig.extranjeria.keywords` at runtime. Master prompt §4.1: "El código no contiene constantes de negocio".
+
+**Added**
+- `recordMetric('flow', 'structural_ignore')` when the channel filter rejects an incoming message (`shouldProcessMessage` returns `!allowed`).
+- `recordMetric('flow', 'media')` when the WhatsApp channel takes the media branch.
+- Closure-peek removed from `connection.ts` (timing optimization no longer worth the duplication after reorder). Closure now waits `readingDelay + closureReactionDelay` — measured deviation ~500ms on closure-only path; well within humanizer tolerances.
+
+**Known gaps still open**
+- Soft-limit can still regress (audit): `getUserTotalChars` reads only last 10 messages; chars can drop after msg #10 and trigger a lower phase. Monotonic max-phase needs a store extension — deferred to a follow-up.
+- Metric NAMES still use the legacy Spanish keys (`cliente_existente`, `extranjeria_redirect`, `ia_response`) rather than the spec `Flow` enum. Renaming touches the admin dashboard — deferred to Phase 11 (observability).
+
+**Verification**
+- `npm run build` clean.
+- Smoke: extranjería detects yaml-sourced keywords (`arraigo familiar`, `inmigrante`, `visado`) and rejects unrelated; closure flow only fires for non-existing clients.
+
 ### PR 2.1 — Router seam (single source of truth for §3 flows)
 
 **Added**

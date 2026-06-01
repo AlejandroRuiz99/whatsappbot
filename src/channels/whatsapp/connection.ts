@@ -19,7 +19,6 @@ import { logger } from '../../observability/logger.js'
 import { shouldProcessMessage } from '../sandbox/phone-filter.js'
 import { setQRCode, setConnectionStatus } from '../../server/http.js'
 import { MESSAGES } from '../../pipeline/templates.js'
-import { isClosureMessage } from '../../pipeline/handlers/closure.js'
 import type { MessageRouter } from '../../pipeline/router.contract.js'
 import {
   calculateReadingDelay,
@@ -153,11 +152,13 @@ export async function connectToWhatsApp(router: MessageRouter): Promise<WASocket
     const filter = shouldProcessMessage(from)
     if (!filter.allowed) {
       logger.warn(`[IGNORADO] ${from}: mensaje filtrado`)
+      recordMetric('flow', 'structural_ignore')
       return
     }
 
     if (MEDIA_TYPES.includes(messageType)) {
       logger.info(`[MENSAJE] ${from}: [${messageType}]`)
+      recordMetric('flow', 'media')
       try {
         const md = botConfig.whatsapp.mediaDelay
         await sleep(randomBetween(md[0], md[1]))
@@ -233,34 +234,28 @@ async function handleIncomingMessage(
       }
     }
 
-    // Closure peek to preserve today's timing: closure flow uses only
-    // closureReactionDelay (no readingDelay). Router still decides flow;
-    // both call the same `isClosureMessage` predicate.
-    if (isClosureMessage(body)) {
-      const response = await router.route({ from, body, pushName })
-      if (response.reaction) {
-        const crd = botConfig.whatsapp.closureReactionDelay
-        await sleep(randomBetween(crd[0], crd[1]))
-        try {
-          await sock?.sendMessage(from, { react: { text: response.reaction, key: msgKey } })
-          logger.info(`[CHANNEL] ${phone} → reaction ${response.reaction} (flow: ${response.flow})`)
-        } catch (error) {
-          logger.error('Error enviando reacción:', error)
-        }
-      }
-      return
-    }
-
-    // Non-closure: parallelize router (may include LLM call) with reading delay.
+    // Reading delay runs in parallel with the router (LLM call lives behind it).
     const readDelay = calculateReadingDelay(body.length)
     const [response] = await Promise.all([
       router.route({ from, body, pushName }),
       sleep(readDelay),
     ])
 
-    if (response.silent || !response.messages || response.messages.length === 0) {
+    if (response.silent) return
+
+    if (response.reaction) {
+      const crd = botConfig.whatsapp.closureReactionDelay
+      await sleep(randomBetween(crd[0], crd[1]))
+      try {
+        await sock?.sendMessage(from, { react: { text: response.reaction, key: msgKey } })
+        logger.info(`[CHANNEL] ${phone} → reaction ${response.reaction} (flow: ${response.flow})`)
+      } catch (error) {
+        logger.error('Error enviando reacción:', error)
+      }
       return
     }
+
+    if (!response.messages || response.messages.length === 0) return
 
     const allMessages: { text: string; flow: string }[] = []
     for (const text of response.messages) {

@@ -99,28 +99,44 @@ rag:
 # ─── Extranjería (derivación a número específico) ───
 extranjeria:
   redirectPhone: "640569537"
+  # Single source of truth — read by src/pipeline/handlers/extranjeria.ts at runtime.
+  # Master prompt §4.1: "El código no contiene constantes de negocio".
   keywords:
     - residencia
     - permiso de residencia
     - permiso de trabajo
     - nacionalidad
+    - nacionalidad española
+    - ciudadanía
     - nie
     - tarjeta de residencia
+    - tarjeta comunitaria
     - arraigo
+    - arraigo social
+    - arraigo laboral
+    - arraigo familiar
     - reagrupación
     - reagrupacion
+    - reagrupación familiar
     - regularizar
     - regularización
     - regularizacion
     - papeles
     - asilo
     - refugiado
+    - protección internacional
     - expulsión
     - expulsion
+    - deportación
+    - deportacion
     - extranjería
     - extranjeria
+    - inmigrante
+    - immigrante
     - visado
     - visa
+    - entrada en españa
+    - permiso de estancia
 
 # ─── Horarios (saludo contextual) ───
 timeGreeting:

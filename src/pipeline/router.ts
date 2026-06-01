@@ -5,16 +5,11 @@
  * are thin adapters: they translate channel-specific events into
  * MessageInput, call router.route(), then apply the RoutedResponse.
  *
- * Current order (PR 2.1 — preserves today's behavior):
- *   closure → existing_client → extranjeria → escalation → ai
+ * Order (matches master prompt §3):
+ *   existing_client → extranjeria → escalation → closure → ai
  *
- * Spec order (§3):
- *   structural_ignore → existing_client → extranjeria → escalation → closure → ai
- *
- * The closure-vs-existing ordering bug is fixed in PR 2.2.
- * Structural ignore stays at the channel (it never reaches the router).
- * Media stays at the channel today (it never reaches the router either);
- * folding it into a router flow is deferred.
+ * Structural_ignore stays at the channel (it never reaches the router).
+ * Media stays at the channel today; folding into the router is deferred.
  */
 
 import type {
@@ -51,16 +46,7 @@ export class DefaultMessageRouter implements MessageRouter {
     const phone = normalizePhone(input.from)
     const debugMode = Boolean(input.meta?.debugMode)
 
-    // CLOSURE — currently #1 (spec #5; reorder in PR 2.2)
-    if (isClosureMessage(input.body)) {
-      this.deps.store.addUserMessage(phone, input.body)
-      this.deps.store.addBotMessage(phone, '👍')
-      logger.info(`[ROUTER] ${phone} → closure`)
-      recordMetric('flow', 'closure')
-      return { flow: 'closure', reaction: getClosureEmoji(input.body) }
-    }
-
-    // EXISTING CLIENT
+    // 1. EXISTING CLIENT
     if (await this.deps.crm.isExistingClient(phone)) {
       const text = MESSAGES.existingClient
       this.deps.store.addUserMessage(phone, input.body)
@@ -70,7 +56,7 @@ export class DefaultMessageRouter implements MessageRouter {
       return { flow: 'existing_client', messages: [text] }
     }
 
-    // EXTRANJERIA
+    // 2. EXTRANJERIA
     if (isExtranjeriaQuery(input.body)) {
       const text = MESSAGES.extranjeria
       this.deps.store.addUserMessage(phone, input.body)
@@ -80,7 +66,7 @@ export class DefaultMessageRouter implements MessageRouter {
       return { flow: 'extranjeria', messages: [text] }
     }
 
-    // ESCALATION
+    // 3. ESCALATION
     const esc = shouldEscalate(input.body, phone)
     if (esc.escalate) {
       await this.deps.notifier.notify({
@@ -109,7 +95,16 @@ export class DefaultMessageRouter implements MessageRouter {
       }
     }
 
-    // AI — getAIResponse owns its own memory writes
+    // 4. CLOSURE (spec §3 #5 — after the high-priority gates)
+    if (isClosureMessage(input.body)) {
+      this.deps.store.addUserMessage(phone, input.body)
+      this.deps.store.addBotMessage(phone, '👍')
+      logger.info(`[ROUTER] ${phone} → closure`)
+      recordMetric('flow', 'closure')
+      return { flow: 'closure', reaction: getClosureEmoji(input.body) }
+    }
+
+    // 5. AI — getAIResponse owns its own memory writes
     logger.bot(`[ROUTER] ${phone} → ai`)
     recordMetric('flow', 'ia_response')
     const ai = await getAIResponse(input.body, phone, { debugMode })
