@@ -1,31 +1,114 @@
-import 'dotenv/config'
+/**
+ * Environment validation — fail-fast at boot.
+ * Single source of truth for all process.env values.
+ *
+ * Rules (master prompt §4.1):
+ *  - Every required value is typed and validated at module load.
+ *  - Invalid environment exits the process with a readable error.
+ *  - At least one LLM provider key must be present.
+ *  - TEST_PHONE_NUMBER is mandatory when BOT_MODE=sandbox.
+ *  - TELEGRAM_LINK must not be the placeholder in production.
+ */
 
-export const config = {
-  // Bot mode
-  BOT_MODE: process.env.BOT_MODE || 'sandbox',
-  TEST_PHONE_NUMBER: process.env.TEST_PHONE_NUMBER || '',
-  
-  // IA - Groq (recomendado, gratis) o OpenAI
-  GROQ_API_KEY: process.env.GROQ_API_KEY || '',
-  OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
-  
-  // URLs
-  TELEGRAM_LINK: process.env.TELEGRAM_LINK || 'https://t.me/+XXXXX',
-  BOOKING_URL: process.env.BOOKING_URL || 'https://compromisolegal.es/reserva/',
-  
-  // Server
-  PORT: parseInt(process.env.PORT || '3000', 10),
-  
-  // Environment
-  NODE_ENV: process.env.NODE_ENV || 'development',
-  LOG_LEVEL: process.env.LOG_LEVEL || 'info',
-  
-  // RAG / Vector Database
-  PINECONE_API_KEY: process.env.PINECONE_API_KEY || '',
-  PINECONE_INDEX_NAME: process.env.PINECONE_INDEX_NAME || 'tiktok-despacho',
-  
-  // RAG Configuration
-  RAG_TOP_K: parseInt(process.env.RAG_TOP_K || '5', 10),
-  RAG_MIN_SIMILARITY: parseFloat(process.env.RAG_MIN_SIMILARITY || '0.7'),
-  RAG_VIDEO_THRESHOLD: parseFloat(process.env.RAG_VIDEO_THRESHOLD || '0.75'),
+import 'dotenv/config'
+import { z } from 'zod'
+
+const PLACEHOLDER_GROQ = 'gsk_your-groq-key-here'
+const PLACEHOLDER_OPENAI = 'sk-your-key-here'
+const PLACEHOLDER_TELEGRAM = 'https://t.me/+XXXXX'
+
+const GroqKey = z
+  .string()
+  .startsWith('gsk_', 'GROQ_API_KEY must start with "gsk_"')
+  .refine((v) => v !== PLACEHOLDER_GROQ, 'GROQ_API_KEY is still the placeholder')
+
+const OpenAIKey = z
+  .string()
+  .startsWith('sk-', 'OPENAI_API_KEY must start with "sk-"')
+  .refine((v) => v !== PLACEHOLDER_OPENAI, 'OPENAI_API_KEY is still the placeholder')
+
+const EnvSchema = z
+  .object({
+    BOT_MODE: z.enum(['sandbox', 'production']).default('sandbox'),
+    TEST_PHONE_NUMBER: z.string().default(''),
+
+    GROQ_API_KEY: z.union([z.literal(''), GroqKey]).default(''),
+    OPENAI_API_KEY: z.union([z.literal(''), OpenAIKey]).default(''),
+
+    TELEGRAM_LINK: z.string().url().default(PLACEHOLDER_TELEGRAM),
+    BOOKING_URL: z.string().url().default('https://compromisolegal.es/reserva/'),
+
+    PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+
+    NODE_ENV: z.string().default('development'),
+    LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'bot']).default('info'),
+
+    PINECONE_API_KEY: z.string().default(''),
+    PINECONE_INDEX_NAME: z.string().min(1).default('tiktok-despacho'),
+
+    RAG_TOP_K: z.coerce.number().int().positive().default(5),
+    RAG_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.7),
+    RAG_VIDEO_THRESHOLD: z.coerce.number().min(0).max(1).default(0.75),
+  })
+  .superRefine((env, ctx) => {
+    if (env.BOT_MODE === 'sandbox' && !env.TEST_PHONE_NUMBER.trim()) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'TEST_PHONE_NUMBER is required when BOT_MODE=sandbox',
+        path: ['TEST_PHONE_NUMBER'],
+      })
+    }
+    if (!env.GROQ_API_KEY && !env.OPENAI_API_KEY) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'At least one of GROQ_API_KEY or OPENAI_API_KEY must be set',
+        path: ['GROQ_API_KEY'],
+      })
+    }
+    if (env.BOT_MODE === 'production' && env.TELEGRAM_LINK === PLACEHOLDER_TELEGRAM) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'TELEGRAM_LINK must be a real Telegram URL in production (currently placeholder)',
+        path: ['TELEGRAM_LINK'],
+      })
+    }
+  })
+
+export type AppEnv = z.infer<typeof EnvSchema>
+
+function parseEnv(): AppEnv {
+  const parsed = EnvSchema.safeParse(process.env)
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((i) => `  - ${i.path.join('.') || '(root)'}: ${i.message}`)
+      .join('\n')
+    console.error('[BOOT] Invalid environment configuration:\n' + issues)
+    process.exit(1)
+  }
+  return parsed.data
 }
+
+export const config: AppEnv = parseEnv()
+
+/**
+ * Provider availability derived once at boot. Use these instead of
+ * re-checking process.env or string prefixes elsewhere.
+ */
+export const providerStatus = {
+  groq: config.GROQ_API_KEY !== '',
+  openai: config.OPENAI_API_KEY !== '',
+} as const
+
+/**
+ * RAG requires BOTH an OpenAI key (for embeddings) and a Pinecone key
+ * (vector DB). Master prompt §6 mandates an explicit boot log when
+ * RAG is disabled — see src/index.ts.
+ */
+export const ragStatus: { enabled: boolean; reason: string | null } = (() => {
+  const reasons: string[] = []
+  if (config.OPENAI_API_KEY === '') reasons.push('OPENAI_API_KEY missing (required for embeddings)')
+  if (config.PINECONE_API_KEY === '') reasons.push('PINECONE_API_KEY missing (vector DB)')
+  return reasons.length === 0
+    ? { enabled: true, reason: null }
+    : { enabled: false, reason: reasons.join('; ') }
+})()

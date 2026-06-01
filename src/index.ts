@@ -3,7 +3,7 @@
  * Punto de entrada principal
  */
 
-import { config } from './config/env.js'
+import { config, providerStatus, ragStatus } from './config/env.js'
 import { logger } from './utils/logger.js'
 import { startMemoryCleanup } from './services/conversation/memory.js'
 import { startServer } from './server/http.js'
@@ -13,6 +13,14 @@ async function main() {
   logger.info('========================================')
   logger.info('=== Bot WhatsApp - Compromiso Legal ===')
   logger.info(`Modo: ${config.BOT_MODE}`)
+  logger.info(
+    `LLM providers: groq=${providerStatus.groq ? 'on' : 'off'}, openai=${providerStatus.openai ? 'on' : 'off'}`
+  )
+  if (ragStatus.enabled) {
+    logger.info('[RAG] enabled (OpenAI embeddings + Pinecone)')
+  } else {
+    logger.warn(`[RAG] disabled: ${ragStatus.reason}`)
+  }
   logger.info('========================================')
 
   // Iniciar sistema de memoria

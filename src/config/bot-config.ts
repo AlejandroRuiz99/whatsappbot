@@ -1,139 +1,142 @@
 /**
- * Carga y tipado del archivo bot.config.yaml
- * Fuente única de verdad para todas las constantes de comportamiento del bot.
+ * Carga y validación profunda de bot.config.yaml.
+ * Fuente única de verdad para las constantes de comportamiento.
+ *
+ * Reglas (master prompt §4.1):
+ *  - Validación al arranque, fail-fast con path del campo inválido.
+ *  - Los rangos [min, max] se validan como tuplas y min <= max.
+ *  - El código no inventa valores: si falta, se aborta.
  */
 
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import yaml from 'js-yaml'
+import { z } from 'zod'
 
-// ─── Tipos ───
+// ─── Reusable building blocks ───
 
-interface Range {
-  0: number
-  1: number
-}
+const Range = z
+  .tuple([z.number(), z.number()])
+  .refine(([a, b]) => a <= b, 'range must be [min, max] with min <= max')
 
-interface BotConfig {
-  conversation: {
-    maxMessagesPerConversation: number
-    maxConversations: number
-    ttlHours: number
-    ragCacheTtlMinutes: number
-    cleanupIntervalMinutes: number
-  }
-  humanizer: {
-    whatsappMaxLength: number
-    cohesiveBlock: {
-      maxSentences: number
-      maxLength: number
-      probability: number
-    }
-    readingDelay: {
-      veryShort: Range
-      short: Range
-      medium: Range
-      long: Range
-    }
-    typingDelay: {
-      veryShort: Range
-      short: Range
-      medium: { charsPerSecond: number; min: number; max: number }
-      long: { charsPerSecond: number; min: number; max: number }
-    }
-    pauseBetweenMessages: {
-      shortNext: Range
-      mediumNext: Range
-      longNext: Range
-      firstMessageFactor: number
-      lastMessageExtra: Range
-    }
-  }
-  whatsapp: {
-    debounceMs: number
-    reconnectDelayMs: number
-    mediaDelay: Range
-    closureReactionDelay: Range
-  }
-  escalation: {
-    repeatMessageThreshold: number
-  }
-  llm: {
-    groq: {
-      model: string
-      maxTokens: number
-      temperature: number
-      topP: number
-      presencePenalty: number
-      frequencyPenalty: number
-    }
-    openai: {
-      model: string
-      maxTokens: number
-      temperature: number
-      topP: number
-      presencePenalty: number
-      frequencyPenalty: number
-    }
-  }
-  softLimits: {
-    phase1: { maxChars: number; maxMessages: number }
-    phase2: { maxChars: number; maxMessages: number }
-    phase3: { maxChars: number; maxMessages: number }
-    consultationPrice: string
-    studyPrice: string
-    subscriptionLabel: string
-  }
-  rag: {
-    maxVideoRecommendations: number
-    snippetLength: number
-    pinecone: {
-      dimension: number
-      indexCheckMaxAttempts: number
-      indexCheckIntervalMs: number
-    }
-  }
-  extranjeria: {
-    redirectPhone: string
-    keywords: string[]
-  }
-  timeGreeting: {
-    morningStart: number
-    afternoonStart: number
-    nightStart: number
-  }
-}
+const TypingProfile = z
+  .object({
+    charsPerSecond: z.number().positive(),
+    min: z.number().nonnegative(),
+    max: z.number().positive(),
+  })
+  .refine((p) => p.min <= p.max, 'typing profile min must be <= max')
 
-// ─── Validación ───
+const LLMProfile = z.object({
+  model: z.string().min(1),
+  maxTokens: z.number().int().positive(),
+  temperature: z.number().min(0).max(2),
+  topP: z.number().min(0).max(1),
+  presencePenalty: z.number().min(-2).max(2),
+  frequencyPenalty: z.number().min(-2).max(2),
+})
 
-const REQUIRED_SECTIONS = [
-  'conversation', 'humanizer', 'whatsapp', 'escalation',
-  'llm', 'softLimits', 'rag', 'extranjeria', 'timeGreeting'
-] as const
+const SoftLimitPhase = z.object({
+  maxChars: z.number().positive(),
+  maxMessages: z.number().int().positive(),
+})
 
-function validateConfig(cfg: unknown): BotConfig {
-  if (!cfg || typeof cfg !== 'object') {
-    throw new Error('[CONFIG] bot.config.yaml está vacío o malformado')
-  }
+// ─── Full schema ───
 
-  const c = cfg as Record<string, unknown>
+const BotConfigSchema = z.object({
+  conversation: z.object({
+    maxMessagesPerConversation: z.number().int().positive(),
+    maxConversations: z.number().int().positive(),
+    ttlHours: z.number().positive(),
+    ragCacheTtlMinutes: z.number().positive(),
+    cleanupIntervalMinutes: z.number().positive(),
+  }),
+  humanizer: z.object({
+    whatsappMaxLength: z.number().int().positive(),
+    cohesiveBlock: z.object({
+      maxSentences: z.number().int().positive(),
+      maxLength: z.number().int().positive(),
+      probability: z.number().min(0).max(1),
+    }),
+    readingDelay: z.object({
+      veryShort: Range,
+      short: Range,
+      medium: Range,
+      long: Range,
+    }),
+    typingDelay: z.object({
+      veryShort: Range,
+      short: Range,
+      medium: TypingProfile,
+      long: TypingProfile,
+    }),
+    pauseBetweenMessages: z.object({
+      shortNext: Range,
+      mediumNext: Range,
+      longNext: Range,
+      firstMessageFactor: z.number().positive(),
+      lastMessageExtra: Range,
+    }),
+  }),
+  whatsapp: z.object({
+    debounceMs: z.number().int().nonnegative(),
+    reconnectDelayMs: z.number().int().nonnegative(),
+    mediaDelay: Range,
+    closureReactionDelay: Range,
+  }),
+  escalation: z.object({
+    repeatMessageThreshold: z.number().int().positive(),
+  }),
+  llm: z.object({
+    groq: LLMProfile,
+    openai: LLMProfile,
+  }),
+  softLimits: z.object({
+    phase1: SoftLimitPhase,
+    phase2: SoftLimitPhase,
+    phase3: SoftLimitPhase,
+    consultationPrice: z.string().min(1),
+    studyPrice: z.string().min(1),
+    subscriptionLabel: z.string().min(1),
+  }),
+  rag: z.object({
+    maxVideoRecommendations: z.number().int().positive(),
+    snippetLength: z.number().int().positive(),
+    pinecone: z.object({
+      dimension: z.number().int().positive(),
+      indexCheckMaxAttempts: z.number().int().positive(),
+      indexCheckIntervalMs: z.number().int().nonnegative(),
+    }),
+  }),
+  extranjeria: z.object({
+    redirectPhone: z.string().regex(/^\d+$/, 'must be digits only'),
+    keywords: z.array(z.string().min(1)).min(1),
+  }),
+  timeGreeting: z.object({
+    morningStart: z.number().int().min(0).max(23),
+    afternoonStart: z.number().int().min(0).max(23),
+    nightStart: z.number().int().min(0).max(23),
+  }),
+})
 
-  for (const section of REQUIRED_SECTIONS) {
-    if (!(section in c)) {
-      throw new Error(`[CONFIG] bot.config.yaml: falta la sección requerida "${section}"`)
-    }
-  }
+export type BotConfig = z.infer<typeof BotConfigSchema>
 
-  return cfg as BotConfig
-}
-
-// ─── Carga ───
+// ─── Load ───
 
 function loadBotConfig(): BotConfig {
   const configPath = join(process.cwd(), 'bot.config.yaml')
   const raw = readFileSync(configPath, 'utf-8')
   const parsed = yaml.load(raw)
-  return validateConfig(parsed)
+
+  const result = BotConfigSchema.safeParse(parsed)
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((i) => `  - ${i.path.join('.') || '(root)'}: ${i.message}`)
+      .join('\n')
+    console.error('[BOOT] Invalid bot.config.yaml:\n' + issues)
+    process.exit(1)
+  }
+  return result.data
 }
 
 export const botConfig = loadBotConfig()
