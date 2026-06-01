@@ -4,6 +4,23 @@ All notable changes to the whatsappbot project. Format: phase → PR → list.
 
 ## Phase 1 — Cimientos
 
+### PR 1.2 — Interface contracts (§4.3), additive, no file moves
+
+**Added**
+- 5 new `*.contract.ts` files declaring the stable internal contracts from master prompt §4.3 plus thin default adapters around the current free functions:
+  - `src/services/conversation/store.contract.ts` — `ConversationStore` + `defaultConversationStore` (wraps `memory.ts`).
+  - `src/services/conversation/classifier.contract.ts` — `CRMClient` + `defaultCRMClient` (wraps `classifier.ts`, async at the boundary).
+  - `src/services/conversation/escalation.contract.ts` — `EscalationNotifier` + `EscalationPayload` (spec shape: `phone, reason, lastMessages, conversationUrl?`) + `defaultEscalationNotifier` (wraps `escalate.ts:notifyHuman`).
+  - `src/services/knowledgebase/llm/provider.contract.ts` — `LLMProvider` + `groqProvider` / `openaiProvider` / `defaultProviders` (preserves current Groq → OpenAI priority).
+  - `src/pipeline/router.contract.ts` — `MessageRouter`, `MessageInput`, `RoutedResponse`, `Flow` union with the 6 spec flows. No implementation yet (lands in PR 1.3 alongside DI).
+
+**Behavior**
+- Strictly additive. No existing module was modified. Build clean, runtime smoke verified all 5 default impls.
+
+**Notes / divergence**
+- Contracts live next to current modules (rather than in `src/contracts/`) to anticipate the §4.2 reshuffle in PR 1.3 and avoid double churn.
+- Tests still deferred to Phase 10. Smoke test (runtime exercise of all 5 default impls) is the gate.
+
 ### PR 1.1 — Env + YAML validation (fail-fast at boot)
 
 **Added**
