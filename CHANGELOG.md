@@ -2,6 +2,27 @@
 
 All notable changes to the whatsappbot project. Format: phase → PR → list.
 
+## Phase 9 — Filtro de respuesta
+
+### PR 9.0 — Response filter with banned phrases, price guard, length limits + corrective retry
+
+**Added (master prompt §5.4)**
+- `src/knowledge/llm/response-filter.ts` — `evaluateResponse(text)` returns `{ ok, violations[] }`. Five violation kinds: `banned_phrase`, `unauthorized_price`, `too_long`, `too_many_paragraphs`, `markdown_header`. Authorized prices derived live from `softLimits.consultationPrice` and `softLimits.studyPrice` (no duplicate config).
+- `bot.config.yaml:responseFilter` — `maxLength: 1500`, `maxParagraphs: 6`, `bannedPhrases` covering identity (`soy abogada`, `como abogado`, …), guarantees (`tienes derecho a`, `garantizo`, `seguro que gana`, `100% seguro`, …) and AI self-disclosure (`soy una ia`, `como modelo de lenguaje`, …).
+- `src/config/bot-config.ts` — zod schema for the new section. Boot fails fast if missing/invalid (master prompt §4.1).
+- `src/observability/metrics.ts` — two new variants on `recordMetric`: `response_filter:retry` (a provider produced a violation and was given a second chance) and `response_filter:failed` (the retry also violated, the provider was treated as failed). Counters surfaced in `getMetricsSnapshot()`.
+
+**Wired**
+- `src/knowledge/llm/llm.service.ts:tryProvider` — after `stripMarkdown(result)`, runs `evaluateResponse`. On violation: ONE retry with the original messages plus a corrective addon prepended to the system prompt (`buildCorrectionAddon(violations)`). If the retry returns null OR still violates, the provider is treated as failed → `getAIResponse` falls through to the next provider (Groq → OpenAI → local). `addBotMessage(phone, response)` only fires after the filter passes, so conversation memory never stores a rejected response.
+
+**Verified**
+- `npm run build` clean (TSC + asset copy).
+- Unit smoke on `evaluateResponse` (12 adversarial inputs covering: clean, banned phrases for identity/guarantees/AI, authorized prices `69 euros` & `120 euros` pass, unauthorized `200€` flagged, too long, too many paragraphs, leftover markdown header, edge case `30 días` not mis-flagged as price). All expected results.
+
+**Deferred**
+- Live sandbox validation with end-to-end LLM round-trip (requires server boot — left for next session or on-demand).
+- Filter does NOT cover `local.js` fallback responses (intentional — those are hardcoded templates we already control).
+
 ## Phase 2 — Persistencia (backfill, spec ordering)
 
 ### PR 2.0 — SQLite ConversationStore + factory DI + sandbox/extranjería fixes from live test

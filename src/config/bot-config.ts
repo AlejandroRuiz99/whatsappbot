@@ -120,6 +120,11 @@ const BotConfigSchema = z.object({
     afternoonStart: z.number().int().min(0).max(23),
     nightStart: z.number().int().min(0).max(23),
   }),
+  responseFilter: z.object({
+    maxLength: z.number().int().positive(),
+    maxParagraphs: z.number().int().positive(),
+    bannedPhrases: z.array(z.string().min(1)).min(1),
+  }),
 })
 
 export type BotConfig = z.infer<typeof BotConfigSchema>

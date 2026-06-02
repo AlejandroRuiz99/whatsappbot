@@ -185,3 +185,42 @@ timeGreeting:
   morningStart: 6
   afternoonStart: 14
   nightStart: 21
+
+# ─── Filtro de respuesta (Phase 9, master prompt §5.4) ───
+# Validates LLM output before sending. On violation, llm.service retries ONCE
+# with a corrective system addon. If the retry also fails, the provider is
+# treated as failed (next provider or local fallback takes over).
+# Authorized prices are derived from softLimits.consultationPrice/studyPrice —
+# the filter only flags prices that do NOT match those digits.
+responseFilter:
+  maxLength: 1500
+  maxParagraphs: 6
+  bannedPhrases:
+    # Identity violations — Inmaculada is administrative, not lawyer
+    - soy abogada
+    - soy abogado
+    - como abogada
+    - como abogado
+    - en mi opinión legal
+    - mi opinion legal
+    # Guarantees / promises the firm cannot make
+    - tienes derecho a
+    - tiene derecho a
+    - tienen derecho a
+    - garantizo
+    - garantizamos
+    - te garantizo
+    - le garantizo
+    - seguro que gana
+    - seguro que ganas
+    - sin duda ganarás
+    - sin duda ganaras
+    - 100% seguro
+    - cien por cien seguro
+    - es seguro que
+    # AI self-disclosure (kills the human-staff illusion)
+    - soy una ia
+    - soy un bot
+    - soy un asistente virtual
+    - como modelo de lenguaje
+    - como inteligencia artificial

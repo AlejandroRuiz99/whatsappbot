@@ -23,6 +23,11 @@ import {
 import { generarRespuestaLocal } from './local.js'
 import { buildSystemPrompt } from './prompt-builder.js'
 import { getRAGContextWithCache } from './rag-cache.js'
+import {
+  evaluateResponse,
+  buildCorrectionAddon,
+  summarizeViolations
+} from './response-filter.js'
 
 /**
  * Limpia formato markdown que el LLM tiende a generar.
@@ -167,6 +172,38 @@ async function tryProvider(
 
   logger.info(`[LLM] ✅ Respuesta generada con ${name}`)
   let response = stripMarkdown(result)
+
+  // Phase 9 — response filter (master prompt §5.4)
+  const evaluation = evaluateResponse(response)
+  if (!evaluation.ok) {
+    logger.warn(`[FILTER] ${name} violated rules, retrying once: ${summarizeViolations(evaluation.violations)}`)
+    recordMetric('response_filter:retry')
+
+    const correctedSystem = systemPrompt + '\n\n' + buildCorrectionAddon(evaluation.violations)
+    const retryMessages: ChatMessage[] = [
+      { role: 'system', content: correctedSystem },
+      ...messages.slice(1),
+    ]
+    const t1 = Date.now()
+    const retryResult = await generateFn(retryMessages)
+    const retryLatency = Date.now() - t1
+    if (retryResult) recordMetric('llm:latency', retryLatency)
+
+    if (!retryResult) {
+      logger.warn(`[FILTER] ${name} retry returned null — provider treated as failed`)
+      recordMetric('response_filter:failed')
+      return null
+    }
+
+    response = stripMarkdown(retryResult)
+    const retryEval = evaluateResponse(response)
+    if (!retryEval.ok) {
+      logger.warn(`[FILTER] response rejected after retry: violations=${summarizeViolations(retryEval.violations)}`)
+      recordMetric('response_filter:failed')
+      return null
+    }
+    logger.info(`[FILTER] ${name} retry passed`)
+  }
 
   if (debugMode && ragContext && ragContext.chunks.length > 0) {
     response += formatDebugMarkers(ragContext)

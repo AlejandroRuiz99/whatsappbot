@@ -20,6 +20,8 @@ interface MetricsState {
   startedAt: number
   llmLatencies: number[]
   hourlyMessages: HourlyBucket[]
+  responseFilterRetries: number
+  responseFilterFailed: number
 }
 
 const state: MetricsState = {
@@ -32,6 +34,8 @@ const state: MetricsState = {
   startedAt: Date.now(),
   llmLatencies: [],
   hourlyMessages: [],
+  responseFilterRetries: 0,
+  responseFilterFailed: 0,
 }
 
 function recordHourlyMessage(): void {
@@ -57,7 +61,9 @@ export function recordMetric(
     | 'escalation'
     | 'error'
     | 'rag:query'
-    | 'llm:latency',
+    | 'llm:latency'
+    | 'response_filter:retry'
+    | 'response_filter:failed',
   data?: string | number
 ): void {
   switch (type) {
@@ -88,6 +94,12 @@ export function recordMetric(
         if (state.llmLatencies.length > MAX_LATENCY_SAMPLES) state.llmLatencies.shift()
       }
       break
+    case 'response_filter:retry':
+      state.responseFilterRetries++
+      break
+    case 'response_filter:failed':
+      state.responseFilterFailed++
+      break
   }
 }
 
@@ -117,5 +129,7 @@ export function getMetricsSnapshot() {
     avgLatency,
     p95Latency,
     hourlyMessages: state.hourlyMessages.map(b => ({ hour: b.hour, count: b.count })),
+    responseFilterRetries: state.responseFilterRetries,
+    responseFilterFailed: state.responseFilterFailed,
   }
 }
