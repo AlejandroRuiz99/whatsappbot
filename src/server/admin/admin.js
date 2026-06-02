@@ -666,14 +666,17 @@ function renderQRSection(data) {
   }
 
   if (data.qr) {
-    // Mostrar imagen QR usando el endpoint de la app
     container.innerHTML = `
-      <div style="text-align:center">
-        <img src="/qr" alt="QR para WhatsApp" class="qr-img" />
-        <p style="color:var(--text-muted);font-size:12px;margin-top:8px">
+      <div class="qr-placeholder">
+        <span style="font-size:48px">📲</span>
+        <p>QR disponible — escanéalo desde la página dedicada</p>
+        <p style="font-size:12px">
           Abre WhatsApp → Ajustes → Dispositivos vinculados → Vincular dispositivo
         </p>
-        <button class="btn btn-ghost" style="margin-top:8px" onclick="loadConnection()">↻ Actualizar</button>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <a class="btn btn-primary" href="/qr" target="_blank" rel="noopener">Abrir QR</a>
+          <button class="btn btn-ghost" onclick="loadConnection()">↻ Actualizar</button>
+        </div>
       </div>
     `
     return
@@ -683,7 +686,10 @@ function renderQRSection(data) {
     <div class="qr-placeholder">
       <span style="font-size:48px">⏳</span>
       <p>Esperando QR...</p>
-      <button class="btn btn-ghost" onclick="loadConnection()">↻ Actualizar</button>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <a class="btn btn-ghost" href="/qr" target="_blank" rel="noopener">Abrir QR</a>
+        <button class="btn btn-ghost" onclick="loadConnection()">↻ Actualizar</button>
+      </div>
     </div>
   `
 }

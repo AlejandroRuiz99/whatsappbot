@@ -658,14 +658,6 @@ html, body {
 
 .qr-placeholder p { font-size: 13px; }
 
-.qr-img {
-  display: block;
-  border-radius: 8px;
-  border: 2px solid var(--border);
-  width: 200px;
-  height: 200px;
-}
-
 .conn-history {
   display: flex;
   flex-direction: column;
