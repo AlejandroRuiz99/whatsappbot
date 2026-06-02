@@ -2,6 +2,39 @@
 
 All notable changes to the whatsappbot project. Format: phase → PR → list.
 
+## Phase 2 — Persistencia (backfill, spec ordering)
+
+### PR 2.0 — SQLite ConversationStore + factory DI + sandbox/extranjería fixes from live test
+
+**Fixed (sandbox bugs surfaced while testing extranjería flow)**
+- `src/pipeline/templates.ts`: 4 extranjería variants rewritten — all < 160 chars (single bubble) and without the redundant "Hola/Buenas! Soy Inmaculada…" prefix. Previously the longest variant was 256 chars → humanizer split into 3 bubbles, the first of which was just a re-greeting that overrode mid-conversation context. Phone read from `bot.config.yaml:extranjeria.redirectPhone` via `formatSpanishMobile(digits)` (was hardcoded literal in all 4 templates).
+- `src/utils/helpers.ts`: added `formatSpanishMobile(digits)` — formats a 9-digit number as `XXX XX XX XX`.
+- `src/pipeline/router.ts:normalizePhone` and `src/conversation/store/memory.ts:normalizePhone`: when stripping non-digits would produce an empty string (sandbox `sandbox_user@s.whatsapp.net`), fall back to the id without the JID suffix. Without this fix the sandbox AI flow saw `phone === ''` and skipped every `if (phone)` guard, so memory was neither read nor written by the AI — every turn was treated as the first one, causing fresh greetings after extranjería redirects.
+
+**Added (Phase 2 backbone — master prompt §4.4)**
+- `node:sqlite` (Node 22.5+ built-in, no native deps). WAL journaling enabled via PRAGMA.
+- `migrations/0001_initial.sql` — `conversations` table (`phone` PK, `messages` JSON, `created_at`, `last_activity`, `flow`, `escalated`, `resolution`, `rag_cache`). `_migrations` tracking table maintained by the runner.
+- `src/conversation/store/sqlite.ts` — `SqliteConversationStore implements ConversationStore`. Idempotent migration runner reads `migrations/*.sql` in lexicographic order and applies the un-applied set. Per-conversation RAG cache TTL identical to the in-memory impl.
+- `src/conversation/store/factory.ts` — `initConversationStore()` chooses the store at boot. SQLite activated when `BOT_MODE=production` or `SQLITE_PATH` is set; sandbox defaults to in-memory so manual UI tests reset cleanly.
+
+**Refactored**
+- `src/conversation/store/memory.ts`: in-memory logic extracted into a private `InMemoryStore` class implementing `ConversationStore`. The 12 legacy free-function exports (consumed by AI flow, prompt-builder, RAG cache, sandbox UI, admin panel) are now thin delegates over a swappable `activeStore`. New `setActiveStore(store)` lets the factory hot-swap to SQLite **with zero consumer changes**.
+
+**Wired**
+- `src/index.ts`: calls `initConversationStore()` before `startMemoryCleanup()`. Boot log shows `[STORE] In-memory store (sandbox default)` or `[STORE] SQLite active at <path>` depending on mode.
+- `.gitignore`: ignore `data/`, `*.db*` family. Corrected obsolete RAG paths to `src/knowledge/rag/` post §4.2 reshuffle.
+
+**Verified**
+- Smoke #1: in-memory roundtrip (sandbox default) — add/get/delete preserves prior behavior, no log churn.
+- Smoke #2: `SQLITE_PATH=./data/smoke.db` — migration `0001_initial.sql` applied, conversation persists; second boot reads back the data, migration tracker reports "schema up to date".
+- Live sandbox: extranjería renders as a single bubble, no re-greet; subsequent AI turn retains memory and references the previous redirect instead of greeting again.
+- `npm run build` clean.
+
+**Deferred (next Phase 2 PRs)**
+- **Audit trail** with PII-hashed phone + last 3 digits (master prompt §4.4).
+- **Persisted metrics** — hourly aggregates flushed to SQLite (today they still die on restart).
+- **SQLite TTL cleanup timer** (the in-memory cleanup is a no-op when SQLite is the active store; periodic `cleanupStale` lands separately so this PR stays reviewable).
+
 ## Phase 4 — Escalado real
 
 > Note on roadmap order: the master prompt §10 lists Phase 2 = Persistencia

@@ -1,10 +1,13 @@
 /**
- * Mensajes predefinidos del bot con variación para sonar natural
- * Basados en los patrones reales de comunicación del despacho (119 chats analizados)
+ * Mensajes predefinidos del bot con variación para sonar natural.
+ * Basados en los patrones reales de comunicación del despacho (119 chats analizados).
  */
 
 import { config } from '../config/env.js'
-import { pickRandom } from '../utils/helpers.js'
+import { botConfig } from '../config/bot-config.js'
+import { pickRandom, formatSpanishMobile } from '../utils/helpers.js'
+
+const extranjeriaPhone = formatSpanishMobile(botConfig.extranjeria.redirectPhone)
 
 const existingClientVariants = [
   `Hola, qué tal! Soy Inmaculada de Compromiso Legal. Para clientes tenemos un canal en Telegram que es más directo y cómodo para gestionar consultas\n\nLe dejo el enlace: ${config.TELEGRAM_LINK}`,
@@ -29,14 +32,17 @@ const errorVariants = [
   'Lo siento, ha ocurrido un error. Si me repite la consulta se lo intento resolver.',
 ]
 
+// Extranjería: redirect directo al equipo especializado.
+// Sin re-saludo (el bot ya saludó al abrir conversación). Cada variante < 160 chars
+// para que el humanizer no lo parta en múltiples burbujas.
 const extranjeriaVariants = [
-  'Hola! Soy Inmaculada de Compromiso Legal. Para temas de extranjería, permisos de residencia y nacionalidad tenemos un equipo especializado. Nuestro número para temas de extranjería es el 640 56 95 37, es el mismo despacho pero ahí te van a poder atender mucho mejor.',
+  `Para temas de extranjería tenemos un equipo especializado del despacho. El número es ${extranjeriaPhone}, ahí te van a atender mejor.`,
 
-  'Buenas! Soy Inmaculada, administrativa de Compromiso Legal. Los temas de residencia, nacionalidad y arraigo los lleva un equipo especializado del despacho desde el número 640 56 95 37. Escríbeles ahí que te atenderán mejor.',
+  `Estos temas (papeles, residencia, nacionalidad) los lleva nuestro equipo de extranjería. Escríbeles al ${extranjeriaPhone}, te ayudarán mejor.`,
 
-  'Hola! Soy Inmaculada de Compromiso Legal. Para lo que me comentas te paso el número del equipo de extranjería del despacho: 640 56 95 37. Es el mismo despacho, trabajamos juntos, pero ellos están especializados en estos temas y te darán una atención más directa.',
+  `Los temas de extranjería los lleva un equipo del despacho con su propio número: ${extranjeriaPhone}. Mismo despacho, especializados en eso.`,
 
-  'Para temas de permisos, residencia o nacionalidad le recomiendo que contacte con nuestro equipo de extranjería en el 640 56 95 37. Es Compromiso Legal, el mismo despacho, pero ese número es el que tienen habilitado para estos temas concretos.',
+  `Para estos temas tenemos un equipo de extranjería en el ${extranjeriaPhone}. Es el mismo despacho, le atenderán mejor desde ahí.`,
 ]
 
 export const MESSAGES = {

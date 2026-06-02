@@ -12,6 +12,7 @@ import {
 } from './config/env.js'
 import { logger } from './observability/logger.js'
 import { startMemoryCleanup } from './conversation/store/memory.js'
+import { initConversationStore } from './conversation/store/factory.js'
 import { defaultConversationStore } from './conversation/store/contract.js'
 import { defaultCRMClient } from './conversation/classifier/contract.js'
 import {
@@ -42,6 +43,8 @@ async function main() {
   }
   logger.info('========================================')
 
+  // Activate persistent store before anything reads memory (master prompt §4.4).
+  initConversationStore()
   startMemoryCleanup()
   logger.info('[MEMORY] Sistema de memoria iniciado')
 

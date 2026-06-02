@@ -36,7 +36,11 @@ export interface RouterDeps {
 }
 
 function normalizePhone(jid: string): string {
-  return jid.replace('@s.whatsapp.net', '').replace(/\D/g, '')
+  const stripped = jid.replace('@s.whatsapp.net', '')
+  const digits = stripped.replace(/\D/g, '')
+  // Fallback: keep non-digit ids (e.g. 'sandbox_user') so memory/AI flow
+  // don't see them as empty/falsy and skip persistence.
+  return digits || stripped
 }
 
 export class DefaultMessageRouter implements MessageRouter {
