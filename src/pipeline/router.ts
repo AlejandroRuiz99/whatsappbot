@@ -61,7 +61,15 @@ export class DefaultMessageRouter implements MessageRouter {
     }
 
     // 2. EXTRANJERIA
-    if (isExtranjeriaQuery(input.body)) {
+    const history = this.deps.store.getHistoryWithTimestamps(phone) ?? []
+    let lastBotMessage: string | undefined
+    for (let i = history.length - 1; i >= 0; i--) {
+      if (history[i].role === 'assistant') {
+        lastBotMessage = history[i].content
+        break
+      }
+    }
+    if (isExtranjeriaQuery(input.body, lastBotMessage)) {
       const text = MESSAGES.extranjeria
       this.deps.store.addUserMessage(phone, input.body)
       this.deps.store.addBotMessage(phone, text)
