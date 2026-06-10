@@ -123,19 +123,22 @@ escalation:
     - prefiero por telefono
 
 # ─── LLM (modelos y parámetros) ───
+# temperature bajada 0.85 → 0.7 (2026-06): con 0.85 el modelo a veces se
+# re-saludaba a mitad de conversación, mezclaba usted/tú o divagaba de tema.
+# 0.7 mantiene naturalidad pero sigue mejor las reglas del prompt.
 llm:
   groq:
     model: "llama-3.3-70b-versatile"
     maxTokens: 600
-    temperature: 0.85
-    topP: 0.92
+    temperature: 0.7
+    topP: 0.9
     presencePenalty: 0.3
     frequencyPenalty: 0.3
   openai:
     model: "gpt-3.5-turbo"
     maxTokens: 550
-    temperature: 0.85
-    topP: 0.92
+    temperature: 0.7
+    topP: 0.9
     presencePenalty: 0.3
     frequencyPenalty: 0.3
 
