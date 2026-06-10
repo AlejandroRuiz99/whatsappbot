@@ -1,8 +1,12 @@
 # ─── Conversación y memoria ───
+# maxMessages 10→16 y ttlHours 24→72 (2026-06): 10 mensajes se quedaban cortos
+# para la cualificación legal (edad/años/país) antes de vender, y un TTL de 24h
+# borraba la conversación antes de que saltara el recontacto programado (cita
+# médica "esta semana"), dejando a Clara sin contexto al reenganchar.
 conversation:
-  maxMessagesPerConversation: 10
+  maxMessagesPerConversation: 16
   maxConversations: 1000
-  ttlHours: 24
+  ttlHours: 72
   ragCacheTtlMinutes: 10
   cleanupIntervalMinutes: 60
 
