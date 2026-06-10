@@ -43,6 +43,11 @@ const EnvSchema = z
     NODE_ENV: z.string().default('development'),
     LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'bot']).default('info'),
 
+    // Protege el panel /admin y las APIs /api/admin/* (más /api/restart).
+    // Si está vacío, el panel queda abierto (cómodo en local) y se avisa al
+    // arranque. En producción debe definirse: el panel expone PII de clientes.
+    ADMIN_TOKEN: z.string().default(''),
+
     PINECONE_API_KEY: z.string().default(''),
     PINECONE_INDEX_NAME: z.string().min(1).default('tiktok-despacho'),
 
@@ -76,6 +81,13 @@ const EnvSchema = z
         code: 'custom',
         message: 'At least one of GROQ_API_KEY or OPENAI_API_KEY must be set',
         path: ['GROQ_API_KEY'],
+      })
+    }
+    if (env.BOT_MODE === 'production' && env.ADMIN_TOKEN !== '' && env.ADMIN_TOKEN.length < 16) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'ADMIN_TOKEN must be at least 16 chars when set',
+        path: ['ADMIN_TOKEN'],
       })
     }
     if (env.BOT_MODE === 'production' && env.TELEGRAM_LINK === PLACEHOLDER_TELEGRAM) {

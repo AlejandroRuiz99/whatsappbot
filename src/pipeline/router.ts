@@ -21,6 +21,11 @@ import type { ConversationStore } from '../conversation/store/contract.js'
 import type { CRMClient } from '../conversation/classifier/contract.js'
 import type { EscalationNotifier } from '../conversation/escalation/contract.js'
 import { shouldEscalate } from '../conversation/escalation/escalate.js'
+import { isBotPausedFor, raiseAlert } from '../conversation/alerts/store.js'
+import {
+  maybeScheduleFollowUp,
+  cancelFollowUp,
+} from '../conversation/followup/scheduler.js'
 import { getAIResponse } from '../knowledge/llm/llm.service.js'
 import { MESSAGES } from './templates.js'
 import { isClosureMessage, getClosureEmoji } from './handlers/closure.js'
@@ -49,6 +54,20 @@ export class DefaultMessageRouter implements MessageRouter {
   async route(input: MessageInput): Promise<RoutedResponse> {
     const phone = normalizePhone(input.from)
     const debugMode = Boolean(input.meta?.debugMode)
+
+    // El cliente ha escrito: cualquier recontacto pendiente deja de proceder.
+    // Si este mismo mensaje vuelve a aplazar, los flujos closure/ai lo
+    // reprograman más abajo (MEJORAS BOT 2026-06).
+    cancelFollowUp(phone)
+
+    // 0. BOT EN PAUSA — hay una alerta pendiente y el caso lo lleva un
+    // humano. Guardamos el mensaje (visible en /admin) pero no respondemos.
+    if (isBotPausedFor(phone)) {
+      this.deps.store.addUserMessage(phone, input.body)
+      logger.info(`[ROUTER] ${phone} → paused (alerta pendiente, sin respuesta del bot)`)
+      recordMetric('flow', 'paused')
+      return { flow: 'paused', silent: true }
+    }
 
     // 1. EXISTING CLIENT
     if (await this.deps.crm.isExistingClient(phone)) {
@@ -101,7 +120,20 @@ export class DefaultMessageRouter implements MessageRouter {
         lastMessages,
         name: input.pushName,
       })
-      const text = MESSAGES.escalation
+      // Alerta para el panel admin: pausa el bot para este número hasta que
+      // un humano la marque como atendida (o caduque alerts.pauseHours).
+      raiseAlert({
+        phone,
+        reason: esc.reason || 'other',
+        message: input.body,
+        name: input.pushName,
+      })
+      // Solicitud de llamada: confirmar que una compañera llamará para
+      // agendar (MEJORAS BOT 2026-06); resto de razones, escalado genérico.
+      const text =
+        esc.reason === 'solicitud_llamada'
+          ? MESSAGES.callRequest
+          : MESSAGES.escalation
       this.deps.store.addUserMessage(phone, input.body)
       this.deps.store.addBotMessage(phone, text)
       logger.bot(`[ROUTER] ${phone} → escalation (${esc.reason})`)
@@ -127,12 +159,14 @@ export class DefaultMessageRouter implements MessageRouter {
       this.deps.store.addBotMessage(phone, '👍')
       logger.info(`[ROUTER] ${phone} → closure`)
       recordMetric('flow', 'closure')
+      maybeScheduleFollowUp(phone, input.body)
       return { flow: 'closure', reaction: getClosureEmoji(input.body) }
     }
 
     // 5. AI — getAIResponse owns its own memory writes
     logger.bot(`[ROUTER] ${phone} → ai`)
     recordMetric('flow', 'ia_response')
+    maybeScheduleFollowUp(phone, input.body)
     const ai = await getAIResponse(input.body, phone, { debugMode })
     return { flow: 'ai', messages: [ai] }
   }

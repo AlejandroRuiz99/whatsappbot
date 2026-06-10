@@ -47,6 +47,8 @@ function escapeHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/`/g, '&#96;')
 }
 
 function getFlowClass(flow) {
@@ -105,6 +107,7 @@ function navigateTo(section) {
 
   // Cargar datos al cambiar sección
   if (section === 'chats') loadChats()
+  if (section === 'alerts') loadAlerts()
   if (section === 'metrics') loadMetrics()
   if (section === 'connection') loadConnection()
 }
@@ -232,7 +235,13 @@ function handleNewLog(event) {
 }
 
 function handleEscalation(event) {
-  showToast(`⚠️ Escalación: ${event.phone} — ${event.reason}`, 'warn', 6000)
+  showToast(`🚨 Alerta: ${event.phone} — ${event.reason}. Bot en pausa para ese número.`, 'warn', 8000)
+  // Refrescar la sección si está abierta; si no, actualizar el badge desde la API
+  if (state.activeSection === 'alerts') {
+    loadAlerts()
+  } else {
+    refreshAlertsBadge()
+  }
 }
 
 function handleErrorEvent(event) {
@@ -307,6 +316,7 @@ function renderChatList(conversations) {
   container.innerHTML = sorted.map(c => {
     const flow = c.latestMessage?.role === 'assistant' ? (c.lastFlow || 'ia_response') : ''
     const flowBadge = flow ? `<span class="flow-badge ${getFlowClass(flow)}">${getFlowLabel(flow)}</span>` : ''
+    const pausedChip = c.paused ? '<span class="paused-chip">⏸ Bot en pausa</span>' : ''
     const preview = c.latestMessage
       ? escapeHtml((c.latestMessage.content || '').substring(0, 50))
       : '<em>Sin mensajes</em>'
@@ -320,6 +330,7 @@ function renderChatList(conversations) {
         </div>
         <div class="chat-meta">
           ${flowBadge}
+          ${pausedChip}
           <span style="font-size:11px;color:var(--text-dim)">${c.messageCount} msgs</span>
         </div>
         <div class="chat-preview">${preview}</div>
@@ -400,6 +411,98 @@ async function deleteChat(phone) {
   } catch (e) {
     showToast('Error al eliminar la conversación', 'error')
   }
+}
+
+// ─── SECCIÓN ALERTAS ──────────────────────────────
+const REASON_LABELS = {
+  urgencia: '⚡ Urgencia',
+  frustración: '😤 Frustración',
+  frustracion: '😤 Frustración',
+  consulta_compleja: '🧩 Consulta compleja',
+  mensaje_repetido: '🔁 Mensaje repetido',
+  solicitud_llamada: '📞 Pide que le llamen',
+}
+
+async function loadAlerts() {
+  try {
+    const res = await fetch('/api/admin/alerts')
+    const data = await res.json()
+    renderAlerts(data.alerts || [])
+    updateBadge('alerts', data.pending || 0)
+  } catch (e) {
+    console.error('[Admin] Error cargando alertas:', e)
+    document.getElementById('alerts-list').innerHTML =
+      '<div class="empty-state"><span class="empty-icon">⚠️</span><p>Error cargando alertas</p></div>'
+  }
+}
+
+async function refreshAlertsBadge() {
+  try {
+    const res = await fetch('/api/admin/alerts?limit=1')
+    const data = await res.json()
+    updateBadge('alerts', data.pending || 0)
+  } catch { /* no crítico */ }
+}
+
+function renderAlerts(alerts) {
+  const container = document.getElementById('alerts-list')
+  if (!container) return
+
+  if (!alerts || alerts.length === 0) {
+    container.innerHTML =
+      '<div class="empty-state"><span class="empty-icon">✅</span><p>Sin alertas — el bot atiende todos los números</p></div>'
+    return
+  }
+
+  container.innerHTML = alerts.map(a => {
+    const pending = a.status === 'pending'
+    const reason = REASON_LABELS[a.reason] || a.reason
+    const action = pending
+      ? `<button class="btn btn-primary" onclick="resolveAlertById(${a.id})">✓ Marcar atendida (reactivar bot)</button>`
+      : `<span class="alert-resolved-label">Atendida ${a.resolvedAt ? formatRelative(a.resolvedAt) : ''}</span>`
+
+    return `
+      <div class="alert-item ${pending ? 'pending' : 'resolved'}">
+        <div class="alert-main">
+          <div class="alert-item-header">
+            <span class="alert-reason">${reason}</span>
+            <span class="chat-phone">${escapeHtml(a.phoneDisplay || a.phone)}</span>
+            ${a.name ? `<span class="alert-name">${escapeHtml(a.name)}</span>` : ''}
+            <span class="chat-time">${formatRelative(a.createdAt)}</span>
+            ${pending ? '<span class="paused-chip">⏸ Bot en pausa</span>' : ''}
+          </div>
+          <div class="alert-message">${escapeHtml(a.message || '')}</div>
+        </div>
+        <div class="alert-actions">
+          <button class="btn btn-ghost" onclick="openAlertChat('${escapeHtml(a.phone)}')">💬 Ver chat</button>
+          ${action}
+        </div>
+      </div>
+    `
+  }).join('')
+}
+
+async function resolveAlertById(id) {
+  try {
+    const res = await fetch(`/api/admin/alerts/${id}/resolve`, { method: 'POST' })
+    if (!res.ok) throw new Error('resolve failed')
+    const data = await res.json()
+    showToast(
+      data.botPaused
+        ? 'Alerta atendida. El número sigue en pausa (tiene otras alertas pendientes).'
+        : 'Alerta atendida — bot reactivado para ese número',
+      'success'
+    )
+    loadAlerts()
+    loadChats()
+  } catch (e) {
+    showToast('Error al resolver la alerta', 'error')
+  }
+}
+
+function openAlertChat(phone) {
+  navigateTo('chats')
+  openChat(phone)
 }
 
 // ─── SECCIÓN LOGS ─────────────────────────────────
@@ -788,9 +891,16 @@ function init() {
     .then(r => r.json())
     .then(d => {
       updateConnectionDot(d.status)
-      // Sincronizar debug toggle con el estado real del servidor
+      // El enlace al sandbox solo tiene sentido cuando el bot corre en ese modo
+      if (d.mode === 'sandbox') {
+        const link = document.getElementById('sandbox-link')
+        if (link) link.style.display = ''
+      }
     })
     .catch(() => {})
+
+  // Badge de alertas pendientes al arrancar
+  refreshAlertsBadge()
 
   // Cargar logs iniciales en background
   loadLogs()

@@ -17,7 +17,7 @@ import { config } from '../../config/env.js'
 import { botConfig } from '../../config/bot-config.js'
 import { logger } from '../../observability/logger.js'
 import { shouldProcessMessage } from '../sandbox/phone-filter.js'
-import { setQRCode, setConnectionStatus } from '../../server/http.js'
+import { setQRCode, getQRCode, setConnectionStatus } from '../../server/http.js'
 import { MESSAGES } from '../../pipeline/templates.js'
 import type { MessageRouter } from '../../pipeline/router.contract.js'
 import {
@@ -81,11 +81,17 @@ export async function sendWhatsAppMessage(to: string, text: string): Promise<voi
   await sock.sendMessage(to, { text })
 }
 
+// Throttle del WARN de reconexión: con el QR sin escanear, Baileys cierra la
+// conexión cada ~5s y el log se llenaba de líneas idénticas. Se loguea la
+// primera y luego 1 de cada RECONNECT_LOG_EVERY.
+const RECONNECT_LOG_EVERY = 10
+let consecutiveReconnects = 0
+
 export async function connectToWhatsApp(router: MessageRouter): Promise<WASocket> {
   const { state, saveCreds } = await useMultiFileAuthState('auth_info')
   const { version, isLatest } = await fetchLatestBaileysVersion()
 
-  logger.info(`Usando Baileys v${version.join('.')}, isLatest: ${isLatest}`)
+  logger.debug(`Usando Baileys v${version.join('.')}, isLatest: ${isLatest}`)
 
   sock = makeWASocket({
     auth: state,
@@ -101,17 +107,19 @@ export async function connectToWhatsApp(router: MessageRouter): Promise<WASocket
     logger.debug(`Connection update: ${JSON.stringify({ connection, hasQR: !!qr })}`)
 
     if (qr) {
+      const isFirstQR = getQRCode() === null
       setQRCode(qr)
-      logger.info('========================================')
-      logger.info('QR Code generado - Escanea con WhatsApp')
-      logger.info(`Abre http://localhost:${config.PORT} en tu navegador`)
-      logger.info('========================================')
-
-      try {
-        const qrTerminal = await QRCode.toString(qr, { type: 'terminal', small: true })
-        console.log(qrTerminal)
-      } catch (e) {
-        logger.error('Error generando QR terminal:', e)
+      // Baileys rota el QR cada ~20-60s: solo la primera vez se imprime el
+      // QR ASCII completo; las rotaciones siguientes no ensucian el log
+      // (la página /qr y el panel siempre muestran el QR vigente).
+      if (isFirstQR) {
+        logger.info(`QR generado — escanéalo en http://localhost:${config.PORT}/qr (se renueva solo)`)
+        try {
+          const qrTerminal = await QRCode.toString(qr, { type: 'terminal', small: true })
+          console.log(qrTerminal)
+        } catch (e) {
+          logger.error('Error generando QR terminal:', e)
+        }
       }
     }
 
@@ -119,7 +127,11 @@ export async function connectToWhatsApp(router: MessageRouter): Promise<WASocket
       const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut
 
-      logger.warn(`Conexión cerrada. Status: ${statusCode}. Reconectando: ${shouldReconnect}`)
+      consecutiveReconnects++
+      if (consecutiveReconnects === 1 || consecutiveReconnects % RECONNECT_LOG_EVERY === 0 || !shouldReconnect) {
+        const suffix = consecutiveReconnects > 1 ? ` (intento ${consecutiveReconnects})` : ''
+        logger.warn(`Conexión cerrada. Status: ${statusCode}. Reconectando: ${shouldReconnect}${suffix}`)
+      }
       const newStatus = shouldReconnect ? 'reconnecting' : 'logged_out'
       botEvents.publish({ type: 'connection', status: newStatus, timestamp: Date.now() })
 
@@ -131,12 +143,11 @@ export async function connectToWhatsApp(router: MessageRouter): Promise<WASocket
         logger.info('Sesión cerrada. Elimina la carpeta auth_info y reinicia.')
       }
     } else if (connection === 'open') {
+      consecutiveReconnects = 0
       setQRCode(null)
       setConnectionStatus('connected')
       botEvents.publish({ type: 'connection', status: 'connected', timestamp: Date.now() })
-      logger.info('========================================')
       logger.info('✅ Conectado a WhatsApp correctamente!')
-      logger.info('========================================')
     }
   })
 

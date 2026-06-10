@@ -23,6 +23,8 @@ export type Flow =
   | 'escalation'
   | 'closure'
   | 'ai'
+  /** Bot silenciado para este número: hay una alerta pendiente y el caso lo lleva un humano. */
+  | 'paused'
 
 export interface MessageInput {
   /** Sender identifier (phone with or without JID suffix). */

@@ -20,9 +20,15 @@ import {
   type EscalationNotifier,
 } from './conversation/escalation/contract.js'
 import { createTelegramNotifier } from './conversation/escalation/telegram.js'
+import { initAlertStore } from './conversation/alerts/store.js'
+import { initFollowUpStore } from './conversation/followup/store.js'
+import { startFollowUpScheduler } from './conversation/followup/scheduler.js'
 import { createDefaultRouter } from './pipeline/router.js'
-import { startServer } from './server/http.js'
-import { connectToWhatsApp } from './channels/whatsapp/index.js'
+import { startServer, getConnectionStatus } from './server/http.js'
+import {
+  connectToWhatsApp,
+  sendWhatsAppMessage,
+} from './channels/whatsapp/index.js'
 
 async function main() {
   logger.info('========================================')
@@ -47,6 +53,18 @@ async function main() {
   initConversationStore()
   startMemoryCleanup()
   logger.info('[MEMORY] Sistema de memoria iniciado')
+
+  // Alertas de intervención humana (pausa de bot por número, panel admin).
+  initAlertStore()
+
+  // Recontacto programado (MEJORAS BOT 2026-06). El store de follow-ups se
+  // abre después del conversation store para que la migración 0002 ya exista.
+  initFollowUpStore()
+  startFollowUpScheduler({
+    send: (phone, text) => sendWhatsAppMessage(`${phone}@s.whatsapp.net`, text),
+    ready: () => getConnectionStatus() === 'connected',
+    store: defaultConversationStore,
+  })
 
   await startServer()
   logger.info(`Servidor web: http://localhost:${config.PORT}`)

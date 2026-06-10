@@ -511,7 +511,7 @@ export const SERVICIOS: Servicio[] = [
     id: 'ss-001',
     nombre: 'Estudio personalizado de jubilación',
     categoria: CATEGORIAS.SEGURIDAD_SOCIAL,
-    descripcion: 'Análisis completo de todos los escenarios posibles de jubilación, cálculo de cuánto cobraría en cada opción y recomendación clara sobre qué conviene más. Incluye informe detallado por escrito y videollamada de explicación.',
+    descripcion: 'Análisis completo de todos los escenarios posibles de jubilación, cálculo de cuánto cobraría en cada opción y recomendación clara sobre qué conviene más. Incluye videollamada con la especialista, resumen de la consulta por email y resolución de dudas posteriores. Asesoramiento jurídico completo con estrategias para mejorar la pensión.',
     keywords: ['jubilacion', 'jubilación', 'pension', 'pensión', 'jubilarse', 'cuando me jubilo', 'cuánto cobro', 'años cotizados', 'jubilacion anticipada', 'jubilación anticipada', 'escenarios', 'calcular pension', 'calcular pensión', 'maximizar pension', 'maximizar pensión'],
     precioOrientativo: '120€'
   },
@@ -533,19 +533,107 @@ export const SERVICIOS: Servicio[] = [
   },
   {
     id: 'ss-004',
-    nombre: 'Reclamación o impugnación de resolución INSS',
+    nombre: 'Reclamación previa por denegación de incapacidad permanente',
     categoria: CATEGORIAS.SEGURIDAD_SOCIAL,
-    descripcion: 'Recurso contra resoluciones denegatorias del INSS o mutua en materia de incapacidad, jubilación o prestaciones. Hay plazos que no se pueden perder.',
-    keywords: ['impugnar', 'recurso', 'resolucion denegada', 'resolución denegada', 'inss deniega', 'denegaron', 'plazo recurso', 'reclamar inss'],
-    precioOrientativo: 'Consultar según caso'
+    descripcion: 'Interposición de reclamación previa contra la resolución denegatoria del INSS o mutua en materia de incapacidad permanente. Hay plazos que no se pueden perder.',
+    keywords: ['impugnar', 'recurso', 'reclamacion previa', 'reclamación previa', 'resolucion denegada', 'resolución denegada', 'inss deniega', 'denegaron', 'plazo recurso', 'reclamar inss'],
+    precioOrientativo: '250€ + IVA'
   },
   {
     id: 'ss-005',
     nombre: 'Subsidio para mayores de 52 años',
     categoria: CATEGORIAS.SEGURIDAD_SOCIAL,
-    descripcion: 'Asesoramiento sobre acceso al subsidio de mayores de 52 años, compatibilidad con incapacidad, requisitos de cotización y opciones para cumplir los 90 días necesarios.',
+    descripcion: 'Asesoramiento sobre acceso al subsidio de mayores de 52 años, compatibilidad con incapacidad, requisitos de cotización y opciones para cumplir los 90 días necesarios. Consulta: 69€. La solicitud del subsidio como trámite: 120€ + IVA.',
     keywords: ['subsidio', 'mayores de 52', 'mayor de 52', '52 años', 'subsidio desempleo', 'paro mayores', 'compatibilidad incapacidad subsidio'],
-    precioOrientativo: '69€'
+    precioOrientativo: '69€ consulta / 120€ + IVA trámite'
+  },
+  {
+    id: 'ss-006',
+    nombre: 'Solicitud de pensión de jubilación (cotizaciones solo en España)',
+    categoria: CATEGORIAS.SEGURIDAD_SOCIAL,
+    descripcion: 'Tramitación de la solicitud de pensión de jubilación cuando solo hay cotizaciones en España.',
+    keywords: ['solicitar jubilacion', 'solicitar jubilación', 'tramitar jubilacion', 'tramitar jubilación', 'solicitud pension', 'solicitud pensión', 'pedir la jubilacion', 'pedir la jubilación'],
+    precioOrientativo: '70€ + IVA, más 10% + IVA de una mensualidad (con complemento a mínimos, en su caso)'
+  },
+  {
+    id: 'ss-007',
+    nombre: 'Solicitud de pensión de jubilación con cotizaciones en otros países',
+    categoria: CATEGORIAS.SEGURIDAD_SOCIAL,
+    descripcion: 'Tramitación de jubilación con periodos cotizados en el extranjero. Incluye seguimiento, revisión de la resolución, presentación de escritos de trámite y comunicaciones con el INSS.',
+    keywords: ['jubilacion extranjero', 'jubilación extranjero', 'cotizado fuera', 'convenio bilateral', 'totalizar', 'pension internacional', 'pensión internacional', 'cotizaciones otros paises', 'cotizaciones otros países'],
+    precioOrientativo: '165€ + IVA'
+  },
+  {
+    id: 'ss-008',
+    nombre: 'Recurso de alzada o de reposición',
+    categoria: CATEGORIAS.SEGURIDAD_SOCIAL,
+    descripcion: 'Interposición de recurso de alzada o de reposición contra resoluciones administrativas.',
+    keywords: ['recurso de alzada', 'recurso de reposicion', 'recurso de reposición', 'alzada', 'reposicion', 'reposición'],
+    precioOrientativo: '250€ + IVA'
+  },
+  {
+    id: 'ss-009',
+    nombre: 'Impugnación de alta médica en vía administrativa',
+    categoria: CATEGORIAS.SEGURIDAD_SOCIAL,
+    descripcion: 'Impugnación de altas médicas emitidas por el INSS o la mutua en vía administrativa.',
+    keywords: ['alta medica', 'alta médica', 'impugnar alta', 'me han dado el alta', 'disconforme alta'],
+    precioOrientativo: '250€ + IVA'
+  },
+  {
+    id: 'ss-010',
+    nombre: 'Papeleta de conciliación',
+    categoria: CATEGORIAS.SEGURIDAD_SOCIAL,
+    descripcion: 'Presentación de papeleta de conciliación previa a la vía judicial laboral.',
+    keywords: ['papeleta', 'conciliacion', 'conciliación', 'smac', 'demanda laboral previa'],
+    precioOrientativo: '250€ + IVA, más 10% + IVA de la cuantía ganada'
+  },
+  {
+    id: 'ss-011',
+    nombre: 'Demanda judicial',
+    categoria: CATEGORIAS.SEGURIDAD_SOCIAL,
+    descripcion: 'Presentación de demanda judicial. En incapacidad permanente, además el 10% + IVA de la cuantía a cobrar en 24 mensualidades, descontando los 630€ + IVA ya abonados.',
+    keywords: ['demanda', 'juicio', 'demandar', 'via judicial', 'vía judicial', 'juzgado de lo social'],
+    precioOrientativo: '630€ + IVA'
+  },
+  {
+    id: 'ss-012',
+    nombre: 'Solicitud de ingreso mínimo vital',
+    categoria: CATEGORIAS.SEGURIDAD_SOCIAL,
+    descripcion: 'Tramitación de la solicitud del ingreso mínimo vital. Requiere mínimo un año de residencia legal en España y análisis de los ingresos de la unidad de convivencia.',
+    keywords: ['ingreso minimo vital', 'ingreso mínimo vital', 'imv', 'ayuda ingreso minimo', 'ayuda ingreso mínimo'],
+    precioOrientativo: '120€ + IVA'
+  },
+  {
+    id: 'ss-013',
+    nombre: 'Solicitud de pensión no contributiva',
+    categoria: CATEGORIAS.SEGURIDAD_SOCIAL,
+    descripcion: 'Tramitación de la pensión no contributiva de jubilación. Requiere 65 años y acreditar residencia legal en España (con excepciones para españoles de origen). Se analizan los ingresos de la unidad de convivencia.',
+    keywords: ['no contributiva', 'pension no contributiva', 'pensión no contributiva', 'pnc', 'sin cotizar', 'no he cotizado', 'nunca he cotizado'],
+    precioOrientativo: '120€ + IVA'
+  },
+  {
+    id: 'ss-014',
+    nombre: 'Solicitud de convenio especial con la Seguridad Social',
+    categoria: CATEGORIAS.SEGURIDAD_SOCIAL,
+    descripcion: 'Tramitación del convenio especial con la Seguridad Social para seguir cotizando.',
+    keywords: ['convenio especial', 'seguir cotizando', 'cotizar por mi cuenta'],
+    precioOrientativo: '120€ + IVA'
+  },
+  {
+    id: 'ss-015',
+    nombre: 'Complemento para la brecha de género / maternidad / por hijos',
+    categoria: CATEGORIAS.SEGURIDAD_SOCIAL,
+    descripcion: 'Solicitud del complemento de pensión por brecha de género, maternidad o por hijos. Incluye, en su caso, reclamación previa y demanda en primera instancia.',
+    keywords: ['brecha de genero', 'brecha de género', 'complemento maternidad', 'complemento por hijos', 'complemento de paternidad'],
+    precioOrientativo: '330€ + IVA'
+  },
+  {
+    id: 'ss-016',
+    nombre: 'Solicitud de grado de discapacidad en vía administrativa',
+    categoria: CATEGORIAS.SEGURIDAD_SOCIAL,
+    descripcion: 'Tramitación de la solicitud o revisión del grado de discapacidad en vía administrativa.',
+    keywords: ['grado de discapacidad', 'discapacidad', 'minusvalia', 'minusvalía', 'certificado discapacidad', 'revision grado', 'revisión grado'],
+    precioOrientativo: '330€ + IVA'
   },
 
   // ============ DERECHO ADMINISTRATIVO ============

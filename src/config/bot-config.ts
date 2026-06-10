@@ -89,6 +89,7 @@ const BotConfigSchema = z.object({
     urgencyKeywords: z.array(z.string().min(1)).min(1),
     negativeKeywords: z.array(z.string().min(1)).min(1),
     complexityKeywords: z.array(z.string().min(1)).min(1),
+    callRequestKeywords: z.array(z.string().min(1)).min(1),
   }),
   llm: z.object({
     groq: LLMProfile,
@@ -123,8 +124,28 @@ const BotConfigSchema = z.object({
   responseFilter: z.object({
     maxLength: z.number().int().positive(),
     maxParagraphs: z.number().int().positive(),
+    authorizedPrices: z.array(z.string().regex(/^\d+$/, 'must be digits only')).min(1),
     bannedPhrases: z.array(z.string().min(1)).min(1),
   }),
+  alerts: z.object({
+    pauseHours: z.number().positive(),
+  }),
+  followUp: z
+    .object({
+      enabled: z.boolean(),
+      checkIntervalMinutes: z.number().positive(),
+      defaultDelayDays: z.number().positive(),
+      defaultSendHour: z.number().int().min(0).max(23),
+      weekdaySendHour: z.number().int().min(0).max(23),
+      sendWindowStartHour: z.number().int().min(0).max(23),
+      sendWindowEndHour: z.number().int().min(0).max(23),
+      citaMedicaSignals: z.array(z.string().min(1)).min(1),
+      signals: z.array(z.string().min(1)).min(1),
+    })
+    .refine(
+      (f) => f.sendWindowStartHour < f.sendWindowEndHour,
+      'sendWindowStartHour must be < sendWindowEndHour'
+    ),
 })
 
 export type BotConfig = z.infer<typeof BotConfigSchema>

@@ -2,7 +2,7 @@
  * API compatible con el logger anterior. Delega en logService para mantener
  * ring buffer, archivo rotativo y emisión de eventos al admin panel.
  */
-import { logService } from './log-service.js'
+import { logService, isDebugEnabled } from './log-service.js'
 
 const colors = {
   reset: '\x1b[0m',
@@ -35,6 +35,9 @@ export const logger = {
   },
 
   debug: (message: string, ...args: unknown[]) => {
+    // Respetar el toggle de debug también en consola: sin esto, el stdout
+    // (y el server.log del pod) se llena de líneas DEBUG aunque esté apagado.
+    if (!isDebugEnabled()) return
     console.log(`${colors.cyan}[${timestamp()}]${colors.reset} ${colors.magenta}DEBUG${colors.reset} ${message}`, ...args)
     logService.debug(message, ...args)
   },

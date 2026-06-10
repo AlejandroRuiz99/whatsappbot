@@ -25,6 +25,11 @@
           <span class="nav-label">Chats</span>
           <span class="nav-badge" id="badge-chats" style="display:none">0</span>
         </button>
+        <button class="nav-item" data-section="alerts">
+          <span class="nav-icon">🚨</span>
+          <span class="nav-label">Alertas</span>
+          <span class="nav-badge error" id="badge-alerts" style="display:none">0</span>
+        </button>
         <button class="nav-item" data-section="logs">
           <span class="nav-icon">📋</span>
           <span class="nav-label">Logs</span>
@@ -42,6 +47,10 @@
       </nav>
 
       <div class="sidebar-footer">
+        <div class="sidebar-links">
+          <a class="sidebar-link" id="sandbox-link" href="/sandbox" style="display:none">🧪 Sandbox</a>
+          <a class="sidebar-link" href="/qr" target="_blank" rel="noopener">📱 Página QR</a>
+        </div>
         <div class="status-row" id="sidebar-status">
           <span class="status-dot" id="status-dot"></span>
           <span class="status-text" id="status-text">Cargando...</span>
@@ -79,6 +88,27 @@
               <span class="empty-icon">👈</span>
               <p>Selecciona una conversación</p>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Sección ALERTAS ── -->
+      <section class="section" id="section-alerts">
+        <div class="section-header">
+          <h1>Alertas — intervención humana</h1>
+          <div class="header-actions">
+            <button class="btn btn-ghost" onclick="loadAlerts()">↻ Actualizar</button>
+          </div>
+        </div>
+        <p class="section-hint">
+          Cada escalado (urgencia, frustración, solicitud de llamada, mensaje repetido) crea una alerta
+          y <strong>pausa las respuestas del bot</strong> para ese número: el caso lo toma una persona.
+          Al marcarla como atendida, el bot se reactiva para ese cliente.
+        </p>
+        <div class="alerts-list" id="alerts-list">
+          <div class="empty-state">
+            <span class="empty-icon">🚨</span>
+            <p>Cargando alertas...</p>
           </div>
         </div>
       </section>
@@ -163,7 +193,7 @@
         <div class="section-header">
           <h1>Estado de conexión</h1>
           <div class="header-actions">
-            <button class="btn btn-danger" id="restart-btn" onclick="restartBot()">⟳ Reiniciar sesión</button>
+            <button class="btn btn-danger" id="restart-btn" onclick="restartBot()">🔓 Cerrar sesión y generar QR nuevo</button>
           </div>
         </div>
         <div class="connection-grid">

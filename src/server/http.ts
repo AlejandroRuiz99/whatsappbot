@@ -5,6 +5,7 @@ import * as QRCode from 'qrcode'
 import { config } from '../config/env.js'
 import { logger } from '../observability/logger.js'
 import { registerHealthRoutes } from './health/index.js'
+import { registerAdminAuth } from './auth.js'
 
 // Estado de conexión (compartido entre sandbox y producción)
 let currentQR: string | null = null
@@ -33,9 +34,18 @@ export function getConnectionStatus() {
  */
 export async function startServer() {
   const fastify = Fastify({ logger: false })
-  
+
+  // Guard del panel admin (onRequest) — debe registrarse antes que las rutas.
+  registerAdminAuth(fastify)
+
   // Health check (split into server/health/ — master prompt §4.2)
   registerHealthRoutes(fastify)
+
+  // La raíz aterriza SIEMPRE en el panel de administración (cualquier modo).
+  // Desde el sidebar del admin hay botones para ir al sandbox y al QR.
+  fastify.get('/', async (_request, reply) => {
+    reply.redirect('/admin')
+  })
 
   // API status
   fastify.get('/api/status', async () => ({

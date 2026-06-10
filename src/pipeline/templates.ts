@@ -10,13 +10,13 @@ import { pickRandom, formatSpanishMobile } from '../utils/helpers.js'
 const extranjeriaPhone = formatSpanishMobile(botConfig.extranjeria.redirectPhone)
 
 const existingClientVariants = [
-  `Hola, qué tal! Soy Inmaculada de Compromiso Legal. Para clientes tenemos un canal en Telegram que es más directo y cómodo para gestionar consultas\n\nLe dejo el enlace: ${config.TELEGRAM_LINK}`,
+  `Hola, qué tal! Soy Clara de Compromiso Legal. Para clientes tenemos un canal en Telegram que es más directo y cómodo para gestionar consultas\n\nLe dejo el enlace: ${config.TELEGRAM_LINK}`,
 
-  `Buenos días! Soy Inmaculada, administrativa de Compromiso Legal. Hemos hecho cambios organizativos para poder daros más rapidez en las respuestas, las consultas de clientes ahora las gestionamos por Telegram\n\nAquí tiene el acceso: ${config.TELEGRAM_LINK}`,
+  `Buenos días! Soy Clara, administrativa de Compromiso Legal. Hemos hecho cambios organizativos para poder daros más rapidez en las respuestas, las consultas de clientes ahora las gestionamos por Telegram\n\nAquí tiene el acceso: ${config.TELEGRAM_LINK}`,
 
-  `Hola! Soy Inmaculada de Compromiso Legal. Las consultas de clientes las gestionamos por Telegram, que nos permite atenderle mejor y más rápido\n\nEscríbanos por aquí: ${config.TELEGRAM_LINK}`,
+  `Hola! Soy Clara de Compromiso Legal. Las consultas de clientes las gestionamos por Telegram, que nos permite atenderle mejor y más rápido\n\nEscríbanos por aquí: ${config.TELEGRAM_LINK}`,
 
-  `Buenas! Soy Inmaculada de Compromiso Legal. Como ya es cliente nuestro, le recomiendo que nos escriba por Telegram, es por donde atendemos las consultas de clientes de forma más directa\n\n${config.TELEGRAM_LINK}`,
+  `Buenas! Soy Clara de Compromiso Legal. Como ya es cliente nuestro, le recomiendo que nos escriba por Telegram, es por donde atendemos las consultas de clientes de forma más directa\n\n${config.TELEGRAM_LINK}`,
 ]
 
 const escalationVariants = [
@@ -24,6 +24,15 @@ const escalationVariants = [
   'Entendido. Voy a trasladar su consulta a la especialista del despacho para que le atienda personalmente. Le contactaremos en breve.',
   'Esto es mejor tratarlo directamente con la especialista. Le paso su caso ahora mismo.',
   'De acuerdo, esto merece una atención más detallada. Deje que se lo pase a la abogada, le contactará en breve.',
+]
+
+// Solicitud de llamada (MEJORAS BOT 2026-06): el cliente pide expresamente
+// que le llamemos. Nunca prometer hora exacta; confirmar que una compañera
+// le llamará para ayudarle a agendar la consulta.
+const callRequestVariants = [
+  'Claro, sin problema. Le paso su número a una compañera del despacho para que le llame y le ayude a agendar la consulta. En cuanto pueda le llama.',
+  'Perfecto, aviso ahora a una compañera del despacho para que le llame y vean cómo agendar la consulta. No le puedo decir hora exacta, pero será lo antes posible.',
+  'De acuerdo, le paso el aviso a una compañera para que le llame y le agende la consulta. Cualquier cosa me dice también por aquí.',
 ]
 
 const errorVariants = [
@@ -48,6 +57,7 @@ const extranjeriaVariants = [
 export const MESSAGES = {
   get existingClient() { return pickRandom(existingClientVariants) },
   get escalation() { return pickRandom(escalationVariants) },
+  get callRequest() { return pickRandom(callRequestVariants) },
   get error() { return pickRandom(errorVariants) },
   get extranjeria() { return pickRandom(extranjeriaVariants) },
 }

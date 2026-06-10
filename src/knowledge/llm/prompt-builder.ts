@@ -83,6 +83,9 @@ const SEGURIDAD_SOCIAL_KEYWORDS = [
   'convenio', 'totalizar', 'extranjero cotiz', 'cotizar en espa', 'volver a cotizar',
   'pago directo', 'marinero', 'mineria', 'minería', 'carbon', 'carbón',
   'segunda oportunidad', 'segunda opinión',
+  'no contributiva', 'pnc', 'ingreso minimo', 'ingreso mínimo', 'imv',
+  'convenio especial', 'brecha de genero', 'brecha de género',
+  'complemento de maternidad', 'complemento por hijos',
 ]
 
 function isSegSocialTopic(userMessage: string): boolean {
@@ -161,6 +164,14 @@ const SECTION_SELECTORS: { section: string; keywords: string[] }[] = [
   {
     section: 'SUBSIDIO PARA MAYORES DE 52 AÑOS',
     keywords: ['subsidio', 'mayor 52', 'mayores 52', 'paro', 'desempleo', 'erte'],
+  },
+  {
+    section: 'PENSIÓN NO CONTRIBUTIVA DE JUBILACIÓN',
+    keywords: ['no contributiva', 'pnc', 'sin cotizar', 'no he cotizado', 'nunca he cotizado', 'no llego a los 15'],
+  },
+  {
+    section: 'INGRESO MÍNIMO VITAL',
+    keywords: ['ingreso minimo', 'ingreso mínimo', 'imv'],
   },
 ]
 
@@ -269,7 +280,7 @@ export function buildSystemPrompt(
   // Señal explícita de primer mensaje para que la presentación sea fiable
   const isFirstMessage = !phone || getUserMessageCount(phone) === 0
   const firstMessageNote = isFirstMessage
-    ? '\n\nCONTEXTO: Este es el PRIMER mensaje de esta persona. Preséntate como Inmaculada, administrativa de Compromiso Legal, siguiendo las instrucciones de PRIMER MENSAJE. Saluda, preséntate con tu nombre y pregunta en qué puedes ayudarle.'
+    ? '\n\nCONTEXTO: Este es el PRIMER mensaje de esta persona. Preséntate como Clara, administrativa de Compromiso Legal, siguiendo las instrucciones de PRIMER MENSAJE. Saluda, preséntate con tu nombre y pregunta en qué puedes ayudarle.'
     : ''
 
   return `${prompt}${firstMessageNote}${ragSection}${legalKnowledge}${servicesContext}${conversationContext}${softLimitHint}`

@@ -11,6 +11,7 @@
  */
 
 import { botConfig } from '../../config/bot-config.js'
+import { SERVICIOS } from '../catalog/catalog.data.js'
 
 export type FilterViolation =
   | { kind: 'banned_phrase'; phrase: string }
@@ -28,12 +29,23 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+let authorizedCache: Set<string> | null = null
+
 function authorizedPriceDigits(): Set<string> {
+  if (authorizedCache) return authorizedCache
   const set = new Set<string>()
   for (const label of [botConfig.softLimits.consultationPrice, botConfig.softLimits.studyPrice]) {
     const digits = label.replace(/\D/g, '')
     if (digits) set.add(digits)
   }
+  // Tarifario oficial (MEJORAS BOT 2026-06): trámites con IVA aparte.
+  for (const p of botConfig.responseFilter.authorizedPrices) set.add(p)
+  // Precios orientativos del catálogo: el bot puede citarlos al recomendar
+  // un servicio, así que no deben dispararse como no autorizados.
+  for (const s of SERVICIOS) {
+    for (const m of (s.precioOrientativo ?? '').match(/\d+/g) ?? []) set.add(m)
+  }
+  authorizedCache = set
   return set
 }
 
@@ -93,7 +105,7 @@ export function buildCorrectionAddon(violations: FilterViolation[]): string {
   })
   return (
     `Tu respuesta anterior incumplió las reglas del despacho: ${reasons.join('; ')}. ` +
-    `Reformúlala respetando esas reglas y mantén el tono natural de Inmaculada (administrativa, no abogada).`
+    `Reformúlala respetando esas reglas y mantén el tono natural de Clara (administrativa, no abogada).`
   )
 }
 

@@ -2,9 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { readFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
-import * as QRCode from 'qrcode'
 import { logger } from '../../observability/logger.js'
-import { getQRCode, getConnectionStatus } from '../../server/http.js'
 import { deleteConversation } from '../../conversation/store/memory.js'
 import type { CRMClient } from '../../conversation/classifier/contract.js'
 import type { MessageRouter } from '../../pipeline/router.contract.js'
@@ -52,65 +50,9 @@ export function addToConversation(from: 'user' | 'bot', message: string, flow?: 
   }
 }
 
-// ─── Template helpers ───
-
-function loadTemplate(name: string): string {
-  const templatePath = join(__dirname, `${name}.html`)
-  return readFileSync(templatePath, 'utf8')
-}
-
-function renderQRPage(): string {
-  const template = loadTemplate('qr')
-  const currentQR = getQRCode()
-  const connectionStatus = getConnectionStatus()
-
-  let content = ''
-  let statusClass = ''
-  let statusText = ''
-  let refreshMeta = '5'
-
-  if (connectionStatus === 'connected') {
-    refreshMeta = '0;url=/sandbox'
-    content = `
-      <div style="font-size: 80px; margin: 30px 0;">✅</div>
-      <p style="font-size: 24px; color: #25D366;">¡Conectado!</p>
-      <p style="margin-top: 15px; color: #aaa;">Redirigiendo al sandbox...</p>
-      <a href="/sandbox" class="btn">Ir al Sandbox</a>
-    `
-    statusClass = 'connected'
-    statusText = '🟢 Conectado'
-  } else if (currentQR) {
-    content = `{{QR_CONTENT}}`
-    statusClass = 'connecting'
-    statusText = '🟡 Esperando escaneo...'
-  } else {
-    content = `
-      <div style="font-size: 50px; margin: 30px 0;">⏳</div>
-      <p>Generando código QR...</p>
-      <p style="margin-top: 10px; color: #aaa;">Esta página se actualiza automáticamente</p>
-    `
-    statusClass =
-      connectionStatus === 'connecting' || connectionStatus === 'reconnecting'
-        ? 'connecting'
-        : 'disconnected'
-    statusText =
-      connectionStatus === 'connecting'
-        ? '🟡 Conectando...'
-        : connectionStatus === 'reconnecting'
-          ? '🟡 Reconectando...'
-          : connectionStatus === 'logged_out'
-            ? '🔴 Sesión cerrada'
-            : '🟡 Esperando QR...'
-  }
-
-  return template
-    .replace('{{REFRESH_META}}', refreshMeta)
-    .replace('{{CONTENT}}', content)
-    .replace('{{STATUS_CLASS}}', statusClass)
-    .replace('{{STATUS_TEXT}}', statusText)
-}
-
 // ─── Route registration ───
+// La página QR del sandbox se eliminó: `/` redirige siempre a /admin
+// (src/server/http.ts) y el QR vive en la ruta global /qr.
 
 export async function registerSandboxRoutes(fastify: FastifyInstance) {
   fastify.get('/sandbox/sandbox.js', async (request, reply) => {
@@ -131,38 +73,6 @@ export async function registerSandboxRoutes(fastify: FastifyInstance) {
       logger.error('Error serving styles.css:', error)
       reply.status(404).send('File not found')
     }
-  })
-
-  fastify.get('/', async (request, reply) => {
-    let html = renderQRPage()
-    const currentQR = getQRCode()
-    const connectionStatus = getConnectionStatus()
-
-    if (currentQR && connectionStatus !== 'connected') {
-      try {
-        const qrImage = await QRCode.toDataURL(currentQR, { width: 300 })
-        const qrContent = `
-          <div class="qr-container">
-            <img src="${qrImage}" alt="QR Code" width="250" height="250">
-          </div>
-          <p>Escanea el código QR con WhatsApp</p>
-          <div class="instructions">
-            <ol>
-              <li>Abre WhatsApp en tu teléfono</li>
-              <li>Toca <strong>Menú</strong> o <strong>Configuración</strong></li>
-              <li>Toca <strong>Dispositivos vinculados</strong></li>
-              <li>Toca <strong>Vincular un dispositivo</strong></li>
-              <li>Escanea este código QR</li>
-            </ol>
-          </div>
-        `
-        html = html.replace('{{QR_CONTENT}}', qrContent)
-      } catch (e) {
-        html = html.replace('{{QR_CONTENT}}', '<p>Error generando QR</p>')
-      }
-    }
-
-    reply.type('text/html').send(html)
   })
 
   fastify.get('/sandbox', async (request, reply) => {

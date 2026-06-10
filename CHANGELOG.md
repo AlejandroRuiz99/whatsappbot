@@ -2,6 +2,104 @@
 
 All notable changes to the whatsappbot project. Format: phase → PR → list.
 
+## Phase 10 — MEJORAS BOT (feedback del despacho, 2026-06)
+
+### PR 10.3 — Revisión profunda: routing, seguridad y robustez
+
+**Fixed (routing — impacto de negocio)**
+- `bot.config.yaml:extranjeria.keywords` — eliminado el keyword suelto `residencia`. Colisionaba con consultas de pensiones: "llevo 12 años de residencia legal en España, ¿tengo derecho a la PNC?" se redirigía por error al teléfono de extranjería (el problema se agravó al añadir las secciones PNC/IMV que giran sobre "residencia legal"). Las formas inequívocas de extranjería siguen cubiertas (`permiso de residencia`, `tarjeta de residencia`, `tarjeta comunitaria`, `arraigo`…). Verificado e2e.
+
+**Fixed (seguridad)**
+- `src/server/auth.ts` (nuevo) + `ADMIN_TOKEN` (env, zod): el panel `/admin`, las APIs `/api/admin/*`, el SSE y `/api/restart` quedaban abiertos en un pod público exponiendo PII de clientes y acciones destructivas (borrar conversación, pausar bot, desvincular WhatsApp). Ahora un hook `onRequest` exige el token (cookie HttpOnly `admin_token` fijada al entrar con `?token=`, o header `x-admin-token`), con comparación en tiempo constante. Opcional: vacío → abierto + WARN en boot (no rompe local); ≥16 chars en producción. `/api/status` y health siguen abiertos. Verificado: 401 sin token, 200 con token, 401 con token erróneo.
+- `src/server/admin/admin.js:escapeHtml` — añadido escape de comilla simple y backtick (defensa en profundidad para interpolaciones en atributos `onclick`).
+
+**Fixed (robustez)**
+- SQLite: `PRAGMA busy_timeout = 5000` en los tres stores (conversations, followups, alerts) — abren conexiones independientes al mismo fichero; evita `SQLITE_BUSY` si una tiene el lock de escritura.
+- `src/conversation/followup/detector.ts:atSpainHour` — el `dueAt` ya nunca queda en el pasado (p.ej. cita médica "hoy" a las 23:30 se empuja al día siguiente en vez de disparar un recontacto inmediato).
+- `system.txt` — nueva REGLA DE CIFRAS: el bot nunca escribe importes de pensión/subsidio/prestación en euros (ni aproximados), solo precios de servicios. Reduce falsos positivos del price-guard cuando el LLM contextualiza ("cobrarías unos 900 euros") y refuerza la política de no diagnosticar.
+
+**Verified**
+- `tsc`/`build` limpios; smoke test ampliado a 42 checks (routing residencia/PNC, dueAt futuro). E2E en vivo: auth del panel + redirect raíz + flujo de cookie con `?token=`.
+
+**Revisado pero NO es bug (descartado tras leer el código)**
+- "isFirstMessage roto tras followup": `addUserMessage` corre antes de construir el prompt, así que tras un recontacto el bot no se re-presenta y tiene el followup en contexto. Correcto.
+- "cancelFollowUp antes del gate de pausa": si un humano toma el caso, que el bot deje de recontactar es el comportamiento deseado.
+- `/api/simulate` en producción: solo se registra en modo sandbox.
+
+**Pendiente (operacional — fuera de código, requiere config del despliegue)**
+- Volumen persistente: no hay Dockerfile/manifiesto en el repo. `auth_info/` (sesión WhatsApp) y `data/conversations.db` (conversaciones, followups, alertas) viven en disco; si el pod es efímero, cada redeploy pierde la sesión (exige re-escanear QR) y los datos. Montar ambos en volumen persistente.
+- Recontacto sin contexto histórico: la conversación caduca a 24h (TTL) pero un followup puede dispararse a +30 días; el bot recontacta con el `context` guardado del aplazamiento pero sin el historial completo. Aceptable para un recontacto comercial; mejora futura = persistir un resumen.
+- `appendFileSync` por línea de log es I/O bloqueante (volumen actual bajo, no urgente).
+
+### PR 10.2 — Log menos verboso
+
+**Fixed**
+- `logger.debug` imprimía SIEMPRE en consola aunque el toggle de debug estuviera apagado (el filtro solo aplicaba al ring buffer/archivo). Ahora respeta `isDebugEnabled()` también en stdout — el `server.log` del pod deja de llenarse de líneas DEBUG (`Connection update`, `[DEBOUNCE]`, `[HUMANIZER]`…).
+- Bucle de reconexión (QR sin escanear, close cada ~5s): el WARN "Conexión cerrada…" se throttlea (primero + 1 de cada 10, con contador de intentos); "Usando Baileys vX" pasa a debug; contador se resetea al conectar.
+- QR: el banner + QR ASCII solo se imprimen la PRIMERA vez; las rotaciones (~20-60s) ya no escriben nada (la página /qr y el panel siempre sirven el QR vigente). Banner "✅ Conectado" reducido de 3 líneas a 1.
+
+**Verified**
+- Arranque en sandbox sin escanear: 55 líneas en 27s y 0 DEBUG en stdout (antes ~4 líneas/5s + QR completo por rotación). `tsc` + build limpios.
+
+### PR 10.1 — Raíz → /admin, navegación, panel de alertas + pausa de bot por número
+
+**Rutas y navegación**
+- `GET /` redirige SIEMPRE a `/admin` (antes: página QR propia en sandbox, 404 en producción). Registrada en `src/server/http.ts`; eliminado el handler `/` del sandbox junto con `renderQRPage` (el QR vive en `/qr`).
+- Sidebar del admin: enlaces "🧪 Sandbox" (visible solo cuando `mode === 'sandbox'`, vía `/api/admin/connection.mode`) y "📱 Página QR".
+- Botón de reinicio renombrado a "🔓 Cerrar sesión y generar QR nuevo" (no se elimina: borra `auth_info` y mata el proceso → el pod reinicia y genera QR nuevo; es la única vía para re-vincular).
+
+**Alertas de intervención humana + pausa del bot**
+- `src/conversation/alerts/store.ts` — `AlertStore` (SQLite `migrations/0003_alerts.sql` en producción, memoria en sandbox). API: `raiseAlert`, `isBotPausedFor`, `listAlerts`, `pendingAlertCount`, `resolveAlert`, `resolveAlertsForPhone`.
+- Router: todo escalado (urgencia, frustración, consulta compleja, mensaje repetido, solicitud_llamada) crea una alerta además de notificar por Telegram. Gate nuevo al inicio de `route()`: si el teléfono tiene alertas pendientes vivas, el mensaje se guarda en historial pero el bot NO responde (`flow: 'paused'`, silent). Flow `paused` añadido al contrato.
+- `alerts.pauseHours: 24` (bot.config.yaml) — caducidad de seguridad de la pausa por si nadie resuelve la alerta.
+- Followup scheduler: descarta recontactos de números en pausa (un humano lleva la conversación).
+- Admin API: `GET /api/admin/alerts`, `POST /api/admin/alerts/:id/resolve`, `POST /api/admin/alerts/phone/:phone/resolve`. `GET /api/admin/conversations` incluye `paused`.
+- Admin UI: sección "🚨 Alertas" con badge de pendientes (SSE sobre eventos `escalation` + carga inicial), botón "Marcar atendida (reactivar bot)", "Ver chat", y chip "⏸ Bot en pausa" en la lista de chats.
+
+**Verified**
+- `tsc`/`build` limpios; smoke ampliado a 35 checks (alertas: pausa, multi-alerta, resolve, resolvePhone).
+- E2E en sandbox real: "¿me podéis llamar?" → respuesta callRequest + alerta pendiente → siguiente mensaje sin respuesta del bot → resolve vía API → bot vuelve a responder (flow ai).
+
+### PR 10.0 — Clara, tarifario completo, objeciones, llamadas y recontacto programado
+
+**Persona y tono**
+- Bot renombrado Inmaculada → Clara en `system.txt`, `templates.ts`, `prompt-builder.ts`, `response-filter.ts` (petición del despacho: suena más transparente).
+- `system.txt` — nueva REGLA DE LENGUAJE: nunca "coste/costar/gasto", siempre "valor/inversión". Refuerzo en `responseFilter.bannedPhrases` (`el coste`, `cuesta`, `costaría`, …).
+- Venta menos directa: seguir el hilo del cliente antes de proponer; si pregunta directamente precio/agenda → dar valor + enlace pero preguntar igualmente sobre el caso.
+- Duración de consultas corregida: 40 minutos (antes se decía 30/no constaba).
+
+**Tarifario completo (lenguaje de valor, IVA aparte)**
+- `system.txt` (PRODUCTOS + TRÁMITES) y `catalog.data.ts` (ss-006…ss-016): solicitud jubilación solo España 70€+IVA (+10% una mensualidad), con cotizaciones extranjeras 165€+IVA, reclamación previa IP 250€+IVA, recurso alzada/reposición 250€+IVA, impugnación alta médica 250€+IVA, papeleta conciliación 250€+IVA+10%, demanda 630€+IVA (IP: +10% en 24 mensualidades descontando los 630), subsidio 52/IMV/PNC/convenio especial 120€+IVA, brecha de género y grado discapacidad 330€+IVA.
+- `responseFilter.authorizedPrices` (config) + filtro: precios autorizados ahora = softLimits + tarifario + dígitos de `precioOrientativo` del catálogo (corrige falso positivo pre-existente con precios del catálogo).
+- Venta del estudio de jubilación enriquecida: videollamada con especialista + resumen por email + resolución de dudas posteriores + estrategias para mejorar pensión.
+
+**Conocimiento legal (`legal-knowledge.txt`)**
+- Edades de jubilación con transición 2027 (38a3m→38a6m; 66a10m→67), jubilación parcial (hasta 3 años antes, acuerdo con empresa), penalizaciones caso a caso (a veces compensa, p.ej. con subsidio).
+- Totalización reescrita en 3 instrumentos: Reglamentos comunitarios (UE+Islandia/Liechtenstein/Noruega/Suiza; UK → siempre estudio), Convenio Multilateral Iberoamericano, convenios bilaterales. Regla clave: solo se totaliza dentro del mismo instrumento; si no, se calculan todas las opciones (argumento de estudio).
+- Nuevas secciones PNC (65 años, 10 años residencia, excepciones españoles de origen, unidad de convivencia → cualificar, no resolver) e IMV (info genérica, perfil de baja prioridad). Selectores nuevos en `prompt-builder.ts`.
+- Estrategia SUBSIDIO/DENEGACIONES: tantear (fecha resolución, motivo), "el INSS a veces se equivoca", recordar que el subsidio 52 cotiza hasta la jubilación.
+
+**Documentación post-agenda**
+- `system.txt` PASO 4: no pedir documentación antes de agendar ni por WhatsApp; tras agendar llega email con enlace al portal cliente para subirla. No revisar casos/documentos gratis antes de la consulta.
+
+**Solicitudes de llamada**
+- `escalation.callRequestKeywords` (config) + check en `escalate.ts` (antes que urgencia) con razón `solicitud_llamada`; el router responde con `MESSAGES.callRequest` (confirma que una compañera llamará para agendar, sin hora exacta) y notifica por Telegram como cualquier escalado.
+- `system.txt` REGLA DE LLAMADAS: nunca prometer llamadas espontáneas (refuerzo en bannedPhrases: `le llamaremos`, …).
+
+**Recontacto programado (follow-ups)**
+- `src/conversation/followup/detector.ts` — detecta aplazamientos por señales de config (`followUp.signals`/`citaMedicaSignals`) y extrae fecha objetivo (día de semana → próxima ocurrencia a las 18h España; "semana que viene" +7; "en N días/semanas"; genérico +3 días a las 11h).
+- `src/conversation/followup/store.ts` — `FollowUpStore` (SQLite en producción vía `migrations/0002_followups.sql`, memoria en sandbox). Un follow-up por teléfono.
+- `src/conversation/followup/scheduler.ts` — tick cada 5 min; envía dentro de la ventana 10–20h España; plantillas Clara por tipo (`cita_medica` / `aplazamiento`); guarda el mensaje en historial para que la IA tenga contexto al responder; reintentos con descarte a los 5 fallos.
+- `router.ts` — todo mensaje entrante cancela el follow-up pendiente (el cliente volvió solo); los flujos ai/closure reprograman si el mensaje vuelve a aplazar. `index.ts` — init store + scheduler (gated por `getConnectionStatus() === 'connected'`).
+- `system.txt` sección OBJECIONES: detectar precio vs timing; ofrecer "si quiere le escribo yo ese día".
+
+**Verified**
+- `npx tsc --noEmit` y `npm run build` limpios.
+- `tests/smoke-mejoras.ts` — 24 checks OK: config zod, precios autorizados/no autorizados, frases prohibidas (coste/llamaremos), lenguaje de valor pasa, solicitud de llamada (incl. prioridad sobre urgencia y negativo "os llamo yo"), detector de recontacto (jueves cita médica → jueves 18h España, genérico +3d, semana que viene +7d, pregunta normal no programa).
+
+**Notes**
+- Listas de países (bilaterales / Multilateral Iberoamericano) redactadas desde las fuentes oficiales indicadas por el despacho (seg-social.es y oiss.org) a fecha de conocimiento — conviene revisión humana periódica.
+
 ## Phase 9 — Filtro de respuesta
 
 ### PR 9.0 — Response filter with banned phrases, price guard, length limits + corrective retry

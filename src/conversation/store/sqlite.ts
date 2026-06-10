@@ -55,6 +55,9 @@ export class SqliteConversationStore implements ConversationStore {
     this.db.exec('PRAGMA journal_mode = WAL')
     this.db.exec('PRAGMA foreign_keys = ON')
     this.db.exec('PRAGMA synchronous = NORMAL')
+    // followups y alerts abren su propia conexión al mismo fichero; el
+    // busy_timeout evita SQLITE_BUSY si una tiene el lock de escritura.
+    this.db.exec('PRAGMA busy_timeout = 5000')
 
     this.applyMigrations(opts.migrationsDir ?? join(process.cwd(), 'migrations'))
 

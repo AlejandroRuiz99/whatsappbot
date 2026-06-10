@@ -15,6 +15,14 @@ import {
   getConversationWithTimestamps,
   deleteConversation,
 } from '../../conversation/store/memory.js'
+import {
+  listAlerts,
+  pendingAlertCount,
+  resolveAlert,
+  resolveAlertsForPhone,
+  isBotPausedFor,
+} from '../../conversation/alerts/store.js'
+import { config } from '../../config/env.js'
 import { getConnectionStatus, getQRCode } from '../http.js'
 import { getWhatsAppUser, getPendingMessageCount } from '../../channels/whatsapp/connection.js'
 import { logger } from '../../observability/logger.js'
@@ -110,10 +118,46 @@ export async function registerAdminRoutes(fastify: FastifyInstance): Promise<voi
     return listActiveConversations().map(c => ({
       ...c,
       phoneDisplay: maskPhone(c.phone),
+      paused: isBotPausedFor(c.phone),
       latestMessage: c.latestMessage
         ? { ...c.latestMessage, content: c.latestMessage.content.slice(0, 100) }
         : null,
     }))
+  })
+
+  // ─── Alertas (intervención humana + pausa de bot) ───
+  fastify.get<{ Querystring: { limit?: string } }>('/api/admin/alerts', async (request) => {
+    const limit = parseInt(request.query.limit ?? '100', 10)
+    return {
+      alerts: listAlerts(limit).map(a => ({ ...a, phoneDisplay: maskPhone(a.phone) })),
+      pending: pendingAlertCount(),
+    }
+  })
+
+  fastify.post<{ Params: { id: string } }>('/api/admin/alerts/:id/resolve', async (request, reply) => {
+    const id = parseInt(request.params.id, 10)
+    if (Number.isNaN(id)) {
+      reply.status(400).send({ error: 'id inválido' })
+      return
+    }
+    const alert = resolveAlert(id)
+    if (!alert) {
+      reply.status(404).send({ error: 'Alerta no encontrada' })
+      return
+    }
+    const stillPaused = isBotPausedFor(alert.phone)
+    logger.info(
+      `[ADMIN] Alerta #${id} atendida (${maskPhone(alert.phone)}) — bot ${stillPaused ? 'sigue en pausa (otras alertas pendientes)' : 'reactivado'}`
+    )
+    return { success: true, alert, botPaused: stillPaused }
+  })
+
+  // Reactivación directa de un número (resuelve todas sus alertas pendientes)
+  fastify.post<{ Params: { phone: string } }>('/api/admin/alerts/phone/:phone/resolve', async (request) => {
+    const { phone } = request.params
+    const resolved = resolveAlertsForPhone(phone)
+    logger.info(`[ADMIN] Bot reactivado para ${maskPhone(phone)} (${resolved} alertas resueltas)`)
+    return { success: true, resolved }
   })
 
   fastify.get<{ Params: { phone: string } }>('/api/admin/conversations/:phone', async (request, reply) => {
@@ -159,6 +203,7 @@ export async function registerAdminRoutes(fastify: FastifyInstance): Promise<voi
     return {
       status,
       connected: status === 'connected',
+      mode: config.BOT_MODE,
       qr,
       user,
       pendingMessages: getPendingMessageCount(),

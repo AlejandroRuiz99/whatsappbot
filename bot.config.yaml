@@ -93,6 +93,34 @@ escalation:
     - puede repetir
     - no se que hacer
     - no sé qué hacer
+  # El cliente pide expresamente que el despacho le llame. Se notifica al
+  # equipo (Telegram) y se responde con MESSAGES.callRequest, que confirma
+  # que una compañera le llamará para agendar (MEJORAS BOT 2026-06).
+  callRequestKeywords:
+    - me podéis llamar
+    - me podeis llamar
+    - me pueden llamar
+    - me puede llamar
+    - pueden llamarme
+    - puede llamarme
+    - podéis llamarme
+    - podeis llamarme
+    - que me llamen
+    - que me llame
+    - que me llaméis
+    - que me llameis
+    - llamadme
+    - llámame
+    - llamame
+    - llámenme
+    - llamenme
+    - prefiero una llamada
+    - prefiero que me llamen
+    - mejor llamadme
+    - mejor por teléfono
+    - mejor por telefono
+    - prefiero por teléfono
+    - prefiero por telefono
 
 # ─── LLM (modelos y parámetros) ───
 llm:
@@ -144,7 +172,11 @@ extranjeria:
   # Single source of truth — read by src/pipeline/handlers/extranjeria.ts at runtime.
   # Master prompt §4.1: "El código no contiene constantes de negocio".
   keywords:
-    - residencia
+    # OJO: NO incluir "residencia" a secas — colisiona con pensiones, donde el
+    # cliente dice "10 años de residencia legal en España" (PNC/IMV/jubilación)
+    # y sería redirigido por error a extranjería. Las formas inequívocas de
+    # extranjería ya están cubiertas: "permiso de residencia", "tarjeta de
+    # residencia", "tarjeta comunitaria", "arraigo", etc.
     - permiso de residencia
     - permiso de trabajo
     - nacionalidad
@@ -190,13 +222,16 @@ timeGreeting:
 # Validates LLM output before sending. On violation, llm.service retries ONCE
 # with a corrective system addon. If the retry also fails, the provider is
 # treated as failed (next provider or local fallback takes over).
-# Authorized prices are derived from softLimits.consultationPrice/studyPrice —
-# the filter only flags prices that do NOT match those digits.
+# Authorized prices = softLimits.consultationPrice/studyPrice + authorizedPrices
+# + every digit group in catalog precioOrientativo. Anything else is flagged.
 responseFilter:
   maxLength: 1500
   maxParagraphs: 6
+  # Importes oficiales del tarifario (MEJORAS BOT 2026-06) que el bot puede
+  # mencionar además de los de softLimits: trámites con IVA aparte.
+  authorizedPrices: ["69", "70", "120", "165", "180", "250", "330", "630"]
   bannedPhrases:
-    # Identity violations — Inmaculada is administrative, not lawyer
+    # Identity violations — Clara is administrative, not lawyer
     - soy abogada
     - soy abogado
     - como abogada
@@ -224,3 +259,81 @@ responseFilter:
     - soy un asistente virtual
     - como modelo de lenguaje
     - como inteligencia artificial
+    # Lenguaje de coste — hablar siempre de valor/inversión (MEJORAS BOT 2026-06)
+    - el coste
+    - coste de la consulta
+    - cuesta
+    - costaría
+    - costaria
+    # Promesas de llamada espontáneas — solo la vía de solicitud de llamada
+    - te llamaremos
+    - le llamaremos
+    - la llamaremos
+    - lo llamaremos
+    - te llamo yo
+    - le llamo yo
+
+# ─── Alertas de intervención humana (panel admin) ───
+# Cada escalado crea una alerta pendiente que pausa las respuestas del bot
+# para ese número (un humano toma el caso). Resolver la alerta desde /admin
+# reactiva el bot; pauseHours es la caducidad de seguridad por si se olvida.
+alerts:
+  pauseHours: 24
+
+# ─── Recontacto programado (follow-ups, MEJORAS BOT 2026-06) ───
+# Cuando el cliente aplaza ("el jueves tengo cita médica, luego os escribo"),
+# el bot programa un recontacto. Detección por señales (substring, solo
+# mensajes del usuario); el día concreto se extrae en
+# src/conversation/followup/detector.ts. Un mensaje nuevo del cliente cancela
+# el recontacto pendiente. Horas en huso Europe/Madrid.
+followUp:
+  enabled: true
+  checkIntervalMinutes: 5
+  defaultDelayDays: 3
+  defaultSendHour: 11       # recontactos genéricos ("me lo pienso")
+  weekdaySendHour: 18       # cuando menciona un día concreto (tras su cita)
+  sendWindowStartHour: 10
+  sendWindowEndHour: 20
+  citaMedicaSignals:
+    - cita médica
+    - cita medica
+    - cita con el médico
+    - cita con el medico
+    - cita con el especialista
+    - tribunal médico
+    - tribunal medico
+    - revisión médica
+    - revision medica
+  signals:
+    - os escribo
+    - les escribo
+    - os aviso
+    - les aviso
+    - ya os digo
+    - ya les digo
+    - os digo algo
+    - les digo algo
+    - más adelante
+    - mas adelante
+    - la semana que viene
+    - el mes que viene
+    - a final de mes
+    - a fin de mes
+    - cuando cobre
+    - me lo pienso
+    - me lo voy a pensar
+    - lo pensaré
+    - lo pensare
+    - tengo que pensarlo
+    - déjame pensarlo
+    - dejame pensarlo
+    - lo tengo que hablar
+    - lo hablo con mi
+    - lo consulto con
+    - luego contacto
+    - luego os contacto
+    - luego les contacto
+    - ya contactaré
+    - ya contactare
+    - en unos días
+    - en unos dias

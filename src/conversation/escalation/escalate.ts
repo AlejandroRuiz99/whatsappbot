@@ -86,6 +86,12 @@ export function shouldEscalate(
 ): { escalate: boolean; reason?: string } {
   const esc = botConfig.escalation
 
+  // Solicitud de llamada ANTES que urgencia: "que me llamen cuanto antes"
+  // debe responderse con la confirmación de llamada, no con el escalado
+  // genérico. El router elige MESSAGES.callRequest para esta razón.
+  if (esc.callRequestKeywords.some((kw) => matchesKeyword(message, kw))) {
+    return { escalate: true, reason: 'solicitud_llamada' }
+  }
   if (esc.urgencyKeywords.some((kw) => matchesKeyword(message, kw))) {
     return { escalate: true, reason: 'urgencia' }
   }
